@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Solar-Modul-Orientierung — 3D- und Vogelperspektive</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+      background: #111;
+      color: white;
+    }
+
+    #container {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .view {
+      position: relative;
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #202020;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px 12px;
+      border-radius: 8px;
+      z-index: 10;
+      font-size: 14px;
+      min-width: 260px;
+    }
+
+    /* labels: Text links, Input rechts in einer Linie */
+    #ui label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    #ui label span.lbl {
+      flex: 1;
+      white-space: nowrap;
+    }
+
+    #ui input[type="number"] {
+      width: 90px;
+      text-align: right;
+    }
+
+    /* Slider nimmt komplette Breite, Text darüber */
+    #ui .row-slider {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    #ui input[type="range"] {
+      width: 100%;
+    }
+
+    #ui button {
+      margin-top: 4px;
+      padding: 4px 8px;
+      font-size: 13px;
+    }
+
+    #info {
+      margin-top: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .compass-label {
+      position: absolute;
+      font-weight: bold;
+      pointer-events: none;
+      font-size: 14px;
+    }
+
+    .north {
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .south {
+      bottom: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .east {
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .west {
+      left: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    #resultOverlay {
+      position: fixed;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.75);
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    #resultTable {
+      display: table;
+      border-collapse: collapse;
+    }
+
+    .result-row {
+      display: table-row;
+    }
+
+    .result-label,
+    .result-value {
+      display: table-cell;
+      padding: 2px 6px;
+      white-space: nowrap;
+    }
+
+    .result-label {
+      opacity: 0.8;
+    }
+
+    .result-value {
+      font-weight: 600;
+      padding-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <!-- 3D-Ansicht -->
+    <div id="view3d" class="view">
+      <canvas id="canvas3d"></canvas>
+      <div id="ui">
+        <label>
+          <span class="lbl">PV-Leistung (W)</span>
+          <input type="number" id="wattPeak" value="6000" step="100" />
+        </label>
+        <label>
+          <span class="lbl">Strompreis (€/kWh)</span>
+          <input type="number" id="pricePerKwh" value="0.30" step="0.01" />
+        </label>
+        <label>
+          <span class="lbl">Dachneigung (°)</span>
+          <input type="number" id="roofTilt" value="30" step="1" />
+        </label>
+        <label>
+          <span class="lbl">Dach-Azimut PV (0° = Süd)</span>
+          <input type="number" id="roofAz" value="0" step="1" />
+        </label>
+        <label>
+          <span class="lbl">Modulneigung (°)</span>
+          <!-- hier darfst du auch negative Werte eingeben -->
+          <input type="number" id="moduleTilt" value="0" step="1" />
+        </label>
+        <label class="row-slider">
+          <span class="lbl">Modulneigung (Slider) (°)</span>
+          <!-- Slider bleibt 0..90 -->
+          <input type="range" id="moduleSlider" min="0" max="90" value="0" />
+        </label>
+        <label>
+          <span class="lbl">
+            <input type="checkbox" id="showNormal3D" checked />
+            Modul-Normale anzeigen
+          </span>
+        </label>
+        <button id="btnOptimize" type="button">
+          Optimale Modulneigung
+        </button>
+        <div id="info"></div>
+      </div>
+    </div>
+
+    <!-- Vogelperspektive -->
+    <div id="view2d" class="view">
+      <canvas id="canvas2d"></canvas>
+      <div class="compass-label north">N</div>
+      <div class="compass-label south">S</div>
+      <div class="compass-label east">O</div>
+      <div class="compass-label west">W</div>
+    </div>
+  </div>
+
+  <div id="resultOverlay">
+    <div id="resultTable"></div>
+  </div>
+
+  <!-- Three.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    /* === PV-Yield-Modul ========================================= */
+
+    const yieldMatrix = [
+      /* tilt 0°  */ [871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871],
+      /* tilt 10° */ [931, 931, 931, 921, 921, 911, 901, 891, 881, 861, 851, 841, 831, 811, 811, 801, 791, 791, 791],
+      /* tilt 20° */ [971, 971, 971, 961, 951, 931, 911, 891, 871, 851, 821, 801, 771, 751, 731, 711, 701, 701, 701],
+      /* tilt 30° */ [1001, 991, 991, 971, 961, 941, 911, 881, 851, 821, 791, 751, 721, 691, 661, 641, 621, 611, 611],
+      /* tilt 40° */ [1001, 991, 991, 971, 951, 931, 901, 861, 831, 791, 751, 711, 671, 631, 591, 561, 541, 521, 521],
+      /* tilt 50° */ [981, 971, 961, 951, 931, 901, 871, 831, 791, 751, 701, 661, 611, 561, 521, 481, 451, 441, 431],
+      /* tilt 60° */ [941, 931, 921, 911, 881, 851, 821, 781, 741, 701, 651, 601, 551, 501, 461, 411, 381, 361, 351],
+      /* tilt 70° */ [881, 871, 861, 851, 821, 791, 761, 721, 681, 631, 581, 541, 491, 441, 391, 351, 321, 291, 281],
+      /* tilt 80° */ [801, 791, 781, 771, 751, 721, 681, 651, 611, 561, 511, 471, 421, 371, 331, 291, 261, 241, 231],
+      /* tilt 90° */ [691, 691, 691, 671, 651, 631, 601, 561, 531, 481, 441, 401, 351, 311, 271, 241, 211, 191, 181]
+    ];
+
+    const tiltGrid = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+    const azimuthDiffGrid = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180];
+    const OPT_YIELD = 1001.0;
+    const BASE_YIELD_KWH_PER_KWP = 965;
+
+    function interpolateYield(tilt, delta) {
+      const t = Math.max(0, Math.min(90, tilt));
+      const d = Math.max(0, Math.min(180, delta));
+
+      let i = 0;
+      while (i < tiltGrid.length - 1 && tiltGrid[i + 1] < t) i++;
+
+      let j = 0;
+      while (j < azimuthDiffGrid.length - 1 && azimuthDiffGrid[j + 1] < d) j++;
+
+      const t0 = tiltGrid[i];
+      const t1 = tiltGrid[Math.min(i + 1, tiltGrid.length - 1)];
+      const d0 = azimuthDiffGrid[j];
+      const d1 = azimuthDiffGrid[Math.min(j + 1, azimuthDiffGrid.length - 1)];
+      const tFrac = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
+      const dFrac = d1 === d0 ? 0 : (d - d0) / (d1 - d0);
+
+      const y00 = yieldMatrix[i][j];
+      const y01 = yieldMatrix[i][Math.min(j + 1, azimuthDiffGrid.length - 1)];
+      const y10 = yieldMatrix[Math.min(i + 1, tiltGrid.length - 1)][j];
+      const y11 = yieldMatrix[Math.min(i + 1, tiltGrid.length - 1)][Math.min(j + 1, azimuthDiffGrid.length - 1)];
+
+      const yInterp =
+        (1 - tFrac) * ((1 - dFrac) * y00 + dFrac * y01) +
+        tFrac * ((1 - dFrac) * y10 + dFrac * y11);
+
+      return yInterp;
+    }
+
+    function pvYieldHessen(wattPeak, tiltDeg, azimuthDeg) {
+      const powerKwp = wattPeak / 1000.0;
+      let az = ((azimuthDeg % 360) + 360) % 360;
+      let delta = Math.abs(az - 180);
+      if (delta > 180) delta = 360 - delta;
+
+      const specific = interpolateYield(tiltDeg, delta);
+      const factor = specific / OPT_YIELD;
+      return powerKwp * BASE_YIELD_KWH_PER_KWP * factor;
+    }
+
+    function computeOrientation(roofTiltDeg, roofAzPV, moduleTiltDeg) {
+      const moduleTiltRad = THREE.MathUtils.degToRad(moduleTiltDeg);
+      const roofTiltRad   = THREE.MathUtils.degToRad(roofTiltDeg);
+      const geoRotRad     = THREE.MathUtils.degToRad(180 - roofAzPV); // 0° geo = Nord
+
+      const qModule = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0), -moduleTiltRad
+      );
+      const qRoof = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(1, 0, 0), -roofTiltRad
+      );
+      const qHouse = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 0, 1), geoRotRad
+      );
+
+      const qTotal = new THREE.Quaternion();
+      qTotal.multiplyQuaternions(qRoof, qModule);
+      qTotal.premultiply(qHouse);
+
+      const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(qTotal).normalize();
+
+      const tiltRad = Math.atan2(Math.hypot(normal.x, normal.y), normal.z);
+      const tiltDeg = tiltRad * 180 / Math.PI;
+
+      const horiz = new THREE.Vector3(normal.x, normal.y, 0);
+      let geoAz = 0;
+      if (horiz.lengthSq() > 1e-6) {
+        horiz.normalize();
+        geoAz = Math.atan2(horiz.x, horiz.y) * 180 / Math.PI;
+        if (geoAz < 0) geoAz += 360;
+      }
+
+      const pvAz = (geoAz - 180 + 360) % 360; // 0° = Süd
+
+      return { normal, tiltDeg, geoAz, pvAz };
+    }
+
+    // jetzt -90..+90 statt nur 0..90
+    function findOptimalModuleTilt(roofTiltDeg, roofAzPV) {
+      let bestTilt = 0;
+      let bestYield = -Infinity;
+
+      for (let tilt = -90; tilt <= 90; tilt += 1) {
+        const { tiltDeg, geoAz } = computeOrientation(roofTiltDeg, roofAzPV, tilt);
+        const y = pvYieldHessen(1000, tiltDeg, geoAz);
+        if (y > bestYield) {
+          bestYield = y;
+          bestTilt = tilt;
+        }
+      }
+      return bestTilt;
+    }
+
+    /* === Visualisierung =========================================== */
+
+    let renderer3D, renderer2D;
+    let scene3D, scene2D;
+    let camera3D, camera2D;
+    let house3D, house2D;
+    let module3D, module2D;
+    let arrow2D, arrow3D;
+    let ground3D, ground2D;
+
+    let camRadius = 12;
+    let camTheta  = Math.PI * 0.6;
+    const camPhi  = Math.PI * 0.4;
+    let isMouseDown = false;
+    let lastMouseX = 0;
+
+    window.addEventListener('load', () => {
+      if (typeof THREE === 'undefined') {
+        console.error('Three.js konnte nicht geladen werden.');
+        return;
+      }
+      init();
+      attachUIHandlers();
+      updateScene();
+      animate();
+    });
+
+    function init() {
+      scene3D = new THREE.Scene();
+      scene2D = new THREE.Scene();
+
+      const canvas3d = document.getElementById('canvas3d');
+      renderer3D = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
+      renderer3D.setPixelRatio(window.devicePixelRatio);
+
+      const canvas2d = document.getElementById('canvas2d');
+      renderer2D = new THREE.WebGLRenderer({ canvas: canvas2d, antialias: true });
+      renderer2D.setPixelRatio(window.devicePixelRatio);
+
+      camera3D = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+      camera3D.up.set(0, 0, 1);
+      updateCameraPosition();
+
+      const aspect2D = canvas2d.clientWidth / canvas2d.clientHeight || 1;
+      const frustumSize = 12;
+      camera2D = new THREE.OrthographicCamera(
+        (-frustumSize * aspect2D) / 2,
+        ( frustumSize * aspect2D) / 2,
+        frustumSize / 2,
+        -frustumSize / 2,
+        -100,
+        100
+      );
+      camera2D.up.set(0, 1, 0);
+      camera2D.position.set(0, 0, 20);
+      camera2D.lookAt(0, 0, 0);
+
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+      hemiLight.position.set(0, 0, 1);
+      scene3D.add(hemiLight);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight.position.set(5, 5, 5);
+      scene3D.add(dirLight);
+
+      scene2D.add(hemiLight.clone());
+      scene2D.add(dirLight.clone());
+
+      const axesHelper = new THREE.AxesHelper(5);
+      scene3D.add(axesHelper);
+
+      const groundGeom = new THREE.PlaneGeometry(40, 40);
+      const groundMat  = new THREE.MeshPhongMaterial({
+        color: 0x111111,
+        side: THREE.DoubleSide
+      });
+      ground3D = new THREE.Mesh(groundGeom, groundMat);
+      ground3D.position.z = 0;
+      scene3D.add(ground3D);
+
+      ground2D = new THREE.Mesh(groundGeom, groundMat.clone());
+      ground2D.position.z = 0;
+      scene2D.add(ground2D);
+
+      window.addEventListener('resize', onWindowResize);
+      onWindowResize();
+
+      const view3dDiv = document.getElementById('view3d');
+      view3dDiv.addEventListener('mousedown', onMouseDown);
+      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('mousemove', onMouseMove);
+      view3dDiv.addEventListener('wheel', onWheel, { passive: false });
+    }
+
+    function attachUIHandlers() {
+      const slider      = document.getElementById('moduleSlider');
+      const tiltInput   = document.getElementById('moduleTilt');
+      const roofTiltIn  = document.getElementById('roofTilt');
+      const roofAzIn    = document.getElementById('roofAz');
+      const showNormIn  = document.getElementById('showNormal3D');
+      const wpInput     = document.getElementById('wattPeak');
+      const priceInput  = document.getElementById('pricePerKwh');
+      const btnOpt      = document.getElementById('btnOptimize');
+
+      slider.addEventListener('input', () => {
+        tiltInput.value = slider.value;
+        updateScene();
+      });
+      tiltInput.addEventListener('input', () => {
+        const num = parseFloat(tiltInput.value) || 0;
+        const sliderVal = clamp(num, 0, 90);
+        slider.value = sliderVal;
+        updateScene();
+      });
+      roofTiltIn.addEventListener('input', updateScene);
+      roofAzIn.addEventListener('input', updateScene);
+      showNormIn.addEventListener('change', updateScene);
+      wpInput.addEventListener('input', updateScene);
+      priceInput.addEventListener('input', updateScene);
+
+      btnOpt.addEventListener('click', () => {
+        const roofTiltDeg = parseFloat(document.getElementById('roofTilt').value) || 0;
+        const roofAzPV    = parseFloat(document.getElementById('roofAz').value) || 0;
+        const bestTilt    = findOptimalModuleTilt(roofTiltDeg, roofAzPV);
+        document.getElementById('moduleTilt').value   = bestTilt.toFixed(0);
+        document.getElementById('moduleSlider').value = clamp(bestTilt, 0, 90).toFixed(0);
+        updateScene();
+      });
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function azimuthLabel(pvAz) {
+      const dirs = ['Süd', 'Südwest', 'West', 'Nordwest', 'Nord', 'Nordost', 'Ost', 'Südost'];
+      const idx = Math.round(pvAz / 45) % 8;
+      return dirs[idx];
+    }
+
+    function updateScene() {
+      let roofTiltDeg   = parseFloat(document.getElementById('roofTilt').value) || 0;
+      let roofAzPV      = parseFloat(document.getElementById('roofAz').value) || 0;
+      let moduleTiltDeg = parseFloat(document.getElementById('moduleTilt').value) || 0;
+      const wattPeak    = parseFloat(document.getElementById('wattPeak').value) || 0;
+      let pricePerKwh   = parseFloat(document.getElementById('pricePerKwh').value) || 0;
+
+      moduleTiltDeg = clamp(moduleTiltDeg, -90, 90);
+      document.getElementById('moduleTilt').value = moduleTiltDeg;
+      document.getElementById('moduleSlider').value = clamp(moduleTiltDeg, 0, 90);
+
+      roofAzPV = ((roofAzPV % 360) + 360) % 360;
+      document.getElementById('roofAz').value = roofAzPV;
+
+      pricePerKwh = Math.max(0, pricePerKwh);
+
+      if (house3D) scene3D.remove(house3D);
+      if (house2D) scene2D.remove(house2D);
+      if (arrow2D) scene2D.remove(arrow2D);
+      if (arrow3D) scene3D.remove(arrow3D);
+
+      house3D = buildHouse(roofTiltDeg, roofAzPV, moduleTiltDeg, true);
+      house2D = buildHouse(roofTiltDeg, roofAzPV, moduleTiltDeg, false);
+      scene3D.add(house3D);
+      scene2D.add(house2D);
+
+      module3D = house3D.userData.module;
+      module2D = house2D.userData.module;
+
+      const { normal, tiltDeg, geoAz, pvAz } =
+        computeOrientation(roofTiltDeg, roofAzPV, moduleTiltDeg);
+
+      const yieldKWh = wattPeak > 0
+        ? pvYieldHessen(wattPeak, tiltDeg, geoAz)
+        : 0;
+
+      const savings10y = (wattPeak > 0 && pricePerKwh > 0)
+        ? yieldKWh * pricePerKwh * 10
+        : 0;
+
+      const infoDiv = document.getElementById('info');
+      infoDiv.innerHTML =
+        'Modul-Azimut PV (0° = Süd): ' + pvAz.toFixed(1) + '°<br>' +
+        'Modul-Neigung gegen den Boden: ' + tiltDeg.toFixed(1) + '°';
+
+      const resultTable = document.getElementById('resultTable');
+      const dirName = azimuthLabel(pvAz);
+
+      let rowsHtml = '';
+      rowsHtml += '<div class="result-row">' +
+                    '<div class="result-label">Richtung:</div>' +
+                    '<div class="result-value">' + dirName +
+                      ' (' + pvAz.toFixed(1).replace('.', ',') + '°)</div>' +
+                  '</div>';
+      rowsHtml += '<div class="result-row">' +
+                    '<div class="result-label">Neigung:</div>' +
+                    '<div class="result-value">' +
+                      tiltDeg.toFixed(1).replace('.', ',') + '° über dem Boden</div>' +
+                  '</div>';
+
+      if (wattPeak > 0) {
+        rowsHtml += '<div class="result-row">' +
+                      '<div class="result-label">Ertrag (Hessen, ca.):</div>' +
+                      '<div class="result-value">~' +
+                        yieldKWh.toFixed(0).replace('.', ',') + ' kWh/Jahr</div>' +
+                    '</div>';
+        if (pricePerKwh > 0) {
+          rowsHtml += '<div class="result-row">' +
+                        '<div class="result-label">Strompreis:</div>' +
+                        '<div class="result-value">' +
+                          pricePerKwh.toFixed(2).replace('.', ',') + ' €/kWh</div>' +
+                      '</div>';
+          rowsHtml += '<div class="result-row">' +
+                        '<div class="result-label">Ersparnis (10 Jahre, ca.):</div>' +
+                        '<div class="result-value">~' +
+                          savings10y.toFixed(0).replace('.', ',') + ' €</div>' +
+                      '</div>';
+        }
+      }
+
+      resultTable.innerHTML = rowsHtml;
+
+      // Pfeil in der Vogelperspektive
+      const arrowOrigin2 = new THREE.Vector3();
+      module2D.getWorldPosition(arrowOrigin2);
+
+      const proj2 = new THREE.Vector3(normal.x, normal.y, 0);
+      let arrowDir2 = new THREE.Vector3(1, 0, 0);
+      if (proj2.lengthSq() > 1e-6) arrowDir2 = proj2.normalize();
+
+      arrow2D = new THREE.ArrowHelper(
+        arrowDir2,
+        arrowOrigin2,
+        2.0,
+        0xff0000,
+        0.3,
+        0.2
+      );
+      arrow2D.renderOrder = 10;
+      arrow2D.line.material.depthTest = false;
+      arrow2D.cone.material.depthTest = false;
+      scene2D.add(arrow2D);
+
+      // Pfeil in 3D
+      const showNormal3D = document.getElementById('showNormal3D').checked;
+      if (showNormal3D) {
+        const arrowOrigin3 = new THREE.Vector3();
+        module3D.getWorldPosition(arrowOrigin3);
+        arrowOrigin3.add(normal.clone().multiplyScalar(0.02));
+
+        arrow3D = new THREE.ArrowHelper(
+          normal.clone().normalize(),
+          arrowOrigin3,
+          2.0,
+          0x00ff00,
+          0.3,
+          0.2
+        );
+        arrow3D.renderOrder = 10;
+        arrow3D.line.material.depthTest = false;
+        arrow3D.cone.material.depthTest = false;
+        scene3D.add(arrow3D);
+      }
+    }
+
+    function buildHouse(roofTiltDeg, roofAzPV, moduleTiltDeg, for3D) {
+      const house = new THREE.Group();
+
+      const houseWidth  = 4;
+      const houseDepth  = 4;
+      const houseHeight = 2;
+
+      const roofTiltRad = THREE.MathUtils.degToRad(roofTiltDeg);
+
+      // Wände: X/Y Grundfläche, Z Höhe
+      const wallGeom = new THREE.BoxGeometry(houseWidth, houseDepth, houseHeight);
+      const wallMat  = new THREE.MeshPhongMaterial({
+        color: for3D ? 0x333333 : 0x222222,
+        flatShading: true
+      });
+      const walls = new THREE.Mesh(wallGeom, wallMat);
+      walls.position.set(0, 0, houseHeight / 2);
+      house.add(walls);
+
+      const halfDepthHouse = houseDepth / 2;
+      const eaveOverhang   = 0.3;
+      const halfDepthRoof  = halfDepthHouse + eaveOverhang;
+
+      let s;
+      if (Math.abs(roofTiltRad) < 1e-3) {
+        s = halfDepthRoof;
+      } else {
+        s = halfDepthRoof / Math.cos(roofTiltRad);
+      }
+
+      const hExtra  = s * Math.sin(roofTiltRad);
+      const ridgeZ  = houseHeight + hExtra;
+
+      const widthOverhang = houseWidth * 1.05;
+      const roofGeom = new THREE.PlaneGeometry(widthOverhang, s);
+
+      const roofMat1 = new THREE.MeshPhongMaterial({
+        color: for3D ? 0x555555 : 0x444444,
+        side: THREE.DoubleSide,
+        flatShading: true
+      });
+      const roofMat2 = new THREE.MeshPhongMaterial({
+        color: for3D ? 0x444444 : 0x333333,
+        side: THREE.DoubleSide,
+        flatShading: true
+      });
+
+      // Dachseite 1 (positive Y)
+      const roofSide1Pivot = new THREE.Group();
+      roofSide1Pivot.position.set(0, 0, ridgeZ);
+      roofSide1Pivot.rotation.x = -roofTiltRad;
+
+      const roofSide1 = new THREE.Mesh(roofGeom, roofMat1);
+      roofSide1.position.set(0, s / 2, 0);
+      roofSide1Pivot.add(roofSide1);
+      house.add(roofSide1Pivot);
+
+      // Dachseite 2 (negative Y)
+      const roofSide2Pivot = new THREE.Group();
+      roofSide2Pivot.position.set(0, 0, ridgeZ);
+      roofSide2Pivot.rotation.x =  roofTiltRad;
+
+      const roofSide2 = new THREE.Mesh(roofGeom, roofMat2);
+      roofSide2.position.set(0, -s / 2, 0);
+      roofSide2Pivot.add(roofSide2);
+      house.add(roofSide2Pivot);
+
+      // Modul auf Dachseite 1
+      const moduleWidth  = 1.0;
+      const moduleHeight = 1.8;
+
+      const moduleGeom = new THREE.PlaneGeometry(moduleWidth, moduleHeight);
+      const moduleMat  = new THREE.MeshPhongMaterial({
+        color: 0x00c8ff,
+        side: THREE.DoubleSide,
+        emissive: for3D ? 0x001020 : 0x000000,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
+      });
+
+      const modulePivot = new THREE.Group();
+      roofSide1Pivot.add(modulePivot);
+
+      const moduleOffsetAlongSlope = s * 0.4;
+      const clearance = 0.03; // Abstand zur Dachfläche, damit es nicht hinein klappt
+      modulePivot.position.set(0, moduleOffsetAlongSlope, clearance);
+
+      const moduleMesh = new THREE.Mesh(moduleGeom, moduleMat);
+      // Achse an der linken Kante (von vorne gesehen)
+      moduleMesh.position.set(-moduleWidth / 2, 0, 0);
+      modulePivot.add(moduleMesh);
+
+      // Kippung um lokale Y-Achse (Vorzeichen wie in computeOrientation)
+      modulePivot.rotation.y = -THREE.MathUtils.degToRad(moduleTiltDeg);
+
+      house.userData.module = moduleMesh;
+
+      const geoRotDeg = 180 - roofAzPV;
+      house.rotation.z = THREE.MathUtils.degToRad(geoRotDeg);
+
+      return house;
+    }
+
+    function onWindowResize() {
+      const view3d = document.getElementById('view3d');
+      const view2d = document.getElementById('view2d');
+
+      renderer3D.setSize(view3d.clientWidth, view3d.clientHeight);
+      camera3D.aspect = view3d.clientWidth / view3d.clientHeight;
+      camera3D.updateProjectionMatrix();
+
+      renderer2D.setSize(view2d.clientWidth, view2d.clientHeight);
+      const aspect2D = view2d.clientWidth / view2d.clientHeight || 1;
+      const frustumSize = 12;
+      camera2D.left   = (-frustumSize * aspect2D) / 2;
+      camera2D.right  = ( frustumSize * aspect2D) / 2;
+      camera2D.top    =  frustumSize / 2;
+      camera2D.bottom = -frustumSize / 2;
+      camera2D.updateProjectionMatrix();
+    }
+
+    function updateCameraPosition() {
+      const x = camRadius * Math.sin(camPhi) * Math.cos(camTheta);
+      const y = camRadius * Math.sin(camPhi) * Math.sin(camTheta);
+      const z = camRadius * Math.cos(camPhi);
+      camera3D.position.set(x, y, z);
+      camera3D.lookAt(0, 0, 0);
+    }
+
+    function onMouseDown(event) {
+      if (event.target.closest('#ui')) return;
+      isMouseDown = true;
+      lastMouseX = event.clientX;
+    }
+    function onMouseUp() { isMouseDown = false; }
+    function onMouseMove(event) {
+      if (!isMouseDown) return;
+      const dx = event.clientX - lastMouseX;
+      lastMouseX = event.clientX;
+      const rotSpeed = 0.005;
+      camTheta -= dx * rotSpeed;
+      updateCameraPosition();
+    }
+    function onWheel(event) {
+      event.preventDefault();
+      const zoomSpeed = 0.02;
+      camRadius += event.deltaY * zoomSpeed;
+      camRadius = Math.max(4, Math.min(40, camRadius));
+      updateCameraPosition();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer3D.render(scene3D, camera3D);
+      renderer2D.render(scene2D, camera2D);
+    }
+  </script>
+</body>
+</html>
