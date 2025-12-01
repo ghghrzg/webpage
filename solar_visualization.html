@@ -33,9 +33,10 @@
       height: 100%;
     }
 
+    /* UI-Panel etwas tiefer, damit es nicht mit dem Menü-Button kollidiert */
     #ui {
       position: absolute;
-      top: 10px;
+      top: 40px;
       left: 10px;
       background: rgba(0, 0, 0, 0.6);
       padding: 10px 12px;
@@ -76,12 +77,6 @@
       margin-top: 4px;
       padding: 4px 8px;
       font-size: 13px;
-    }
-
-    #info {
-      margin-top: 8px;
-      font-size: 13px;
-      line-height: 1.4;
     }
 
     .compass-label {
@@ -170,11 +165,32 @@
     #homeLink:hover {
       background: rgba(255,255,255,0.12);
     }
+
+    /* Menü-Toggle oben links */
+    #toggleUiBtn {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 20;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.25);
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    #toggleUiBtn:hover {
+      background: rgba(255,255,255,0.12);
+    }
   </style>
 </head>
 <body>
-  <!-- Home-Link relativ zum Projekt-Root / Ordner -->
+  <!-- Home-Link relativ zum Ordner -->
   <a id="homeLink" href="./">Home</a>
+  <!-- Menü-Toggle -->
+  <button id="toggleUiBtn" type="button">Menü</button>
 
   <div id="container">
     <!-- 3D-Ansicht -->
@@ -207,6 +223,13 @@
           <!-- Slider bleibt 0..90 -->
           <input type="range" id="moduleSlider" min="0" max="90" value="0" />
         </label>
+
+        <!-- Kamera-Höhe -->
+        <label>
+          <span class="lbl">Kamera-Höhe Z</span>
+          <input type="number" id="camHeight" value="0" step="0.5" />
+        </label>
+
         <label>
           <span class="lbl">
             <input type="checkbox" id="showNormal3D" checked />
@@ -216,7 +239,6 @@
         <button id="btnOptimize" type="button">
           Optimale Modulneigung
         </button>
-        <div id="info"></div>
       </div>
     </div>
 
@@ -297,11 +319,13 @@
       return powerKwp * BASE_YIELD_KWH_PER_KWP * factor;
     }
 
+    // *** HIER korrigiert: Modulrotation um -moduleTiltRad (wie im 3D-Modell) ***
     function computeOrientation(roofTiltDeg, roofAzPV, moduleTiltDeg) {
       const moduleTiltRad = THREE.MathUtils.degToRad(moduleTiltDeg);
       const roofTiltRad   = THREE.MathUtils.degToRad(roofTiltDeg);
       const geoRotRad     = THREE.MathUtils.degToRad(180 - roofAzPV); // 0° geo = Nord
 
+      // Modul um lokale Y-Achse, aber mit NEGATIVEM Vorzeichen wie im buildHouse
       const qModule = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(0, 1, 0), -moduleTiltRad
       );
@@ -334,7 +358,6 @@
       return { normal, tiltDeg, geoAz, pvAz };
     }
 
-    // -90..+90 statt nur 0..90
     function findOptimalModuleTilt(roofTiltDeg, roofAzPV) {
       let bestTilt = 0;
       let bestYield = -Infinity;
@@ -363,15 +386,18 @@
     let camRadius = 12;
     let camTheta  = Math.PI * 0.6;
     const camPhi  = Math.PI * 0.4;
+    let camHeightOffset = 0;
 
     let isMouseDown = false;
     let lastMouseX = 0;
 
-    // Touch-Status (ein Finger drehen, zwei Finger zoomen)
+    // Touch-Status
     let isTouchRotating = false;
     let isTouchZooming  = false;
     let touchLastX = 0;
     let lastTouchDistance = 0;
+
+    let uiVisible = true;
 
     window.addEventListener('load', () => {
       if (typeof THREE === 'undefined') {
@@ -464,7 +490,9 @@
       const showNormIn  = document.getElementById('showNormal3D');
       const wpInput     = document.getElementById('wattPeak');
       const priceInput  = document.getElementById('pricePerKwh');
+      const camHeightIn = document.getElementById('camHeight');
       const btnOpt      = document.getElementById('btnOptimize');
+      const toggleBtn   = document.getElementById('toggleUiBtn');
 
       slider.addEventListener('input', () => {
         tiltInput.value = slider.value;
@@ -482,6 +510,11 @@
       wpInput.addEventListener('input', updateScene);
       priceInput.addEventListener('input', updateScene);
 
+      camHeightIn.addEventListener('input', () => {
+        camHeightOffset = parseFloat(camHeightIn.value) || 0;
+        updateCameraPosition();
+      });
+
       btnOpt.addEventListener('click', () => {
         const roofTiltDeg = parseFloat(document.getElementById('roofTilt').value) || 0;
         const roofAzPV    = parseFloat(document.getElementById('roofAz').value) || 0;
@@ -489,6 +522,12 @@
         document.getElementById('moduleTilt').value   = bestTilt.toFixed(0);
         document.getElementById('moduleSlider').value = clamp(bestTilt, 0, 90).toFixed(0);
         updateScene();
+      });
+
+      toggleBtn.addEventListener('click', () => {
+        uiVisible = !uiVisible;
+        const ui = document.getElementById('ui');
+        ui.style.display = uiVisible ? 'block' : 'none';
       });
     }
 
@@ -541,11 +580,6 @@
       const savings10y = (wattPeak > 0 && pricePerKwh > 0)
         ? yieldKWh * pricePerKwh * 10
         : 0;
-
-      const infoDiv = document.getElementById('info');
-      infoDiv.innerHTML =
-        'Modul-Azimut PV (0° = Süd): ' + pvAz.toFixed(1) + '°<br>' +
-        'Modul-Neigung gegen den Boden: ' + tiltDeg.toFixed(1) + '°';
 
       const resultTable = document.getElementById('resultTable');
       const dirName = azimuthLabel(pvAz);
@@ -713,21 +747,26 @@
 
       const moduleOffsetAlongSlope = s * 0.4;
 
-      // Abstand so wählen, dass bei jeder Modulneigung die gesamte Fläche über dem Dach bleibt:
-      const moduleTiltRad = THREE.MathUtils.degToRad(moduleTiltDeg);
-      const baseGap = 0.01; // minimaler Abstand
-      const extraGap = (moduleWidth / 2) * Math.abs(Math.sin(moduleTiltRad));
-      const clearance = baseGap + extraGap;
+      const baseGap = 0.01;
 
-      // Pivot-Linie liegt auf der Dachfläche; clearance hebt die Fläche komplett drüber
-      modulePivot.position.set(0, moduleOffsetAlongSlope, clearance);
+      const tiltRad = THREE.MathUtils.degToRad(moduleTiltDeg);
+
+      let zLift = 0;
+      if (moduleTiltDeg < 0) {
+        const tiltRad = THREE.MathUtils.degToRad(moduleTiltDeg);
+        // vorher: (moduleWidth / 2)
+        zLift = Math.abs(Math.sin(tiltRad)) * moduleWidth;
+      }
+
+      modulePivot.position.set(0, moduleOffsetAlongSlope, baseGap + zLift);
+
 
       const moduleMesh = new THREE.Mesh(moduleGeom, moduleMat);
-      // Achse an der linken Kante (von vorne gesehen)
-      moduleMesh.position.set(-moduleWidth / 2, 0, 0);
+      // Achse an der rechten Kante (von vorne gesehen)
+      moduleMesh.position.set(+moduleWidth / 2, 0, 0);
       modulePivot.add(moduleMesh);
 
-      // Kippung um lokale Y-Achse (gleiches Vorzeichen wie in computeOrientation)
+      // Kippung um lokale Y-Achse (negativ => „nach rechts“ kippen)
       modulePivot.rotation.y = -THREE.MathUtils.degToRad(moduleTiltDeg);
 
       house.userData.module = moduleMesh;
@@ -759,7 +798,7 @@
     function updateCameraPosition() {
       const x = camRadius * Math.sin(camPhi) * Math.cos(camTheta);
       const y = camRadius * Math.sin(camPhi) * Math.sin(camTheta);
-      const z = camRadius * Math.cos(camPhi);
+      const z = camRadius * Math.cos(camPhi) + camHeightOffset;
       camera3D.position.set(x, y, z);
       camera3D.lookAt(0, 0, 0);
     }
@@ -787,7 +826,21 @@
       updateCameraPosition();
     }
 
-    // Touch-Helfer
+    // Helper: prüft, ob Touch auf dem UI liegt
+    function isTouchOverUI(event) {
+      const ui = document.getElementById('ui');
+      if (!ui || ui.style.display === 'none') return false;
+      const touches = event.touches && event.touches.length
+        ? event.touches
+        : (event.changedTouches || []);
+      for (let i = 0; i < touches.length; i++) {
+        const t = touches[i];
+        const el = document.elementFromPoint(t.clientX, t.clientY);
+        if (el && el.closest('#ui')) return true;
+      }
+      return false;
+    }
+
     function getTouchDistance(event) {
       if (event.touches.length < 2) return 0;
       const dx = event.touches[0].clientX - event.touches[1].clientX;
@@ -796,7 +849,8 @@
     }
 
     function onTouchStart(event) {
-      if (event.target.closest('#ui')) return;
+      if (isTouchOverUI(event)) return;
+
       if (event.touches.length === 1) {
         isTouchRotating = true;
         isTouchZooming = false;
@@ -810,6 +864,8 @@
     }
 
     function onTouchMove(event) {
+      if (isTouchOverUI(event)) return;
+
       if (event.touches.length === 1 && isTouchRotating) {
         const x = event.touches[0].clientX;
         const dx = x - touchLastX;
@@ -822,7 +878,7 @@
         const delta = lastTouchDistance - newDist;
         lastTouchDistance = newDist;
         const zoomSpeed = 0.02;
-        camRadius += (delta * zoomSpeed) / 10; // etwas empfindlicher dämpfen
+        camRadius += (delta * zoomSpeed) / 10;
         camRadius = Math.max(4, Math.min(40, camRadius));
         updateCameraPosition();
       }
@@ -834,7 +890,6 @@
         isTouchRotating = false;
         isTouchZooming = false;
       } else if (event.touches.length === 1) {
-        // ggf. von Zoom zurück zu Rotation
         isTouchZooming = false;
         isTouchRotating = true;
         touchLastX = event.touches[0].clientX;
