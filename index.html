@@ -2,656 +2,905 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>lucsch · PV Playground</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Solar-Modul-Orientierung — 3D- und Vogelperspektive</title>
   <style>
-    :root {
-      --bg0: #050712;
-      --bg1: #0c1024;
-      --bg2: #11152e;
-      --accent: #00f5ff;
-      --accent2: #ff6bcb;
-      --text: #f5f5ff;
-      --muted: #9ca3c9;
-      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
-              Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      background: radial-gradient(circle at top, #141b3f 0, var(--bg0) 55%);
-      color: var(--text);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-                   sans-serif;
-    }
-
     body {
+      margin: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+      background: #111;
+      color: white;
+    }
+
+    #container {
       display: flex;
-      align-items: center;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .view {
+      position: relative;
+      flex: 1;
+      display: flex;
       justify-content: center;
-      padding: 1.5rem;
-      overflow: hidden;
+      align-items: center;
+      background: #202020;
     }
 
-    .scanlines::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background: repeating-linear-gradient(
-        to bottom,
-        rgba(255, 255, 255, 0.035) 0,
-        rgba(255, 255, 255, 0.035) 1px,
-        transparent 1px,
-        transparent 3px
-      );
-      mix-blend-mode: soft-light;
-      opacity: 0.35;
-      pointer-events: none;
-      z-index: -1;
-    }
-
-    .shell {
-      position: relative;
+    canvas {
+      display: block;
       width: 100%;
-      max-width: 960px;
-      border-radius: 18px;
-      padding: 1.5rem;
-      background: radial-gradient(circle at top left, #1b2457 0, var(--bg1) 45%, var(--bg0) 100%);
-      box-shadow:
-        0 0 40px rgba(0, 0, 0, 0.7),
-        0 0 0 1px rgba(255, 255, 255, 0.02),
-        0 0 60px rgba(0, 245, 255, 0.25);
-      overflow: hidden;
+      height: 100%;
     }
 
-    .shell::after {
-      content: "";
+    /* UI-Panel etwas tiefer, damit es nicht mit dem Menü-Button kollidiert */
+    #ui {
       position: absolute;
-      inset: -40%;
-      background:
-        radial-gradient(circle at 0 0, rgba(0, 245, 255, 0.14), transparent 50%),
-        radial-gradient(circle at 100% 100%, rgba(255, 107, 203, 0.16), transparent 55%);
-      opacity: 0.7;
-      mix-blend-mode: screen;
-      pointer-events: none;
-      z-index: -2;
-    }
-
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .title {
-      font-family: var(--mono);
-      font-size: clamp(1.8rem, 4vw, 2.4rem);
-      text-transform: lowercase;
-      letter-spacing: 0.08em;
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .title-main {
-      position: relative;
-      padding: 0.15em 0.35em;
-      border-radius: 999px;
-      border: 1px solid rgba(0, 245, 255, 0.4);
-      background: linear-gradient(120deg, rgba(0, 245, 255, 0.1), rgba(255, 107, 203, 0.15));
-      box-shadow: 0 0 18px rgba(0, 245, 255, 0.45);
-      overflow: hidden;
-    }
-
-    .title-main span {
-      position: relative;
-      z-index: 1;
-    }
-
-    .title-main::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, transparent 0, rgba(255, 255, 255, 0.4) 45%, transparent 100%);
-      transform: translateX(-120%);
-      animation: shine 4.5s linear infinite;
-      opacity: 0.35;
-    }
-
-    @keyframes shine {
-      0% { transform: translateX(-140%); }
-      40% { transform: translateX(30%); }
-      100% { transform: translateX(130%); }
-    }
-
-    .title-tag {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.25em;
-      color: var(--muted);
-      opacity: 0.9;
-    }
-
-    .dots {
-      display: inline-flex;
-      gap: 2px;
-    }
-    .dots span {
-      width: 4px;
-      height: 4px;
-      border-radius: 999px;
-      background: rgba(0, 245, 255, 0.7);
-      animation: blink 1.3s infinite alternate;
-    }
-    .dots span:nth-child(2) { animation-delay: 0.18s; }
-    .dots span:nth-child(3) { animation-delay: 0.34s; }
-
-    @keyframes blink {
-      0% { opacity: 0.2; transform: translateY(0); }
-      100% { opacity: 1; transform: translateY(-1px); }
-    }
-
-    .subline {
-      font-family: var(--mono);
-      font-size: 0.8rem;
-      color: var(--muted);
-      text-align: right;
-      opacity: 0.9;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.6fr);
-      gap: 1.4rem;
-    }
-
-    @media (max-width: 780px) {
-      body {
-        padding: 0.75rem;
-      }
-      .grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .subline {
-        display: none;
-      }
-    }
-
-    .terminal {
-      position: relative;
-      border-radius: 14px;
-      background: radial-gradient(circle at top left, #232b5a 0, #11152e 50%, #090c18 100%);
-      box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-        0 18px 40px rgba(0, 0, 0, 0.75);
-      padding: 1rem 1.1rem 1.1rem;
-      font-family: var(--mono);
-      font-size: 0.84rem;
-      color: #e5e7ff;
-      overflow: hidden;
-    }
-
-    .terminal-header {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      margin-bottom: 0.75rem;
-      color: var(--muted);
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.16em;
-    }
-
-    .term-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: #f87171;
-      box-shadow:
-        10px 0 0 #fbbf24,
-        20px 0 0 #34d399;
-    }
-
-    .term-body {
-      position: relative;
-      max-height: 320px;
-    }
-
-    .prompt {
-      color: var(--accent);
-    }
-
-    .prompt span.path {
-      color: #a5b4fc;
-    }
-
-    .comment {
-      color: var(--muted);
-    }
-
-    .highlight {
-      color: var(--accent2);
-    }
-
-    .result-line {
-      margin-top: 0.7rem;
-      padding: 0.55rem 0.6rem;
+      top: 40px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px 12px;
       border-radius: 8px;
-      background: rgba(0, 245, 255, 0.03);
-      border: 1px solid rgba(0, 245, 255, 0.14);
+      z-index: 10;
+      font-size: 14px;
+      min-width: 260px;
+    }
+
+    #ui label {
       display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 0.75rem;
-      font-size: 0.86rem;
-    }
-
-    .result-kwh {
-      font-weight: 600;
-      font-size: 1.05rem;
-      color: #e0faff;
-    }
-
-    .result-sub {
-      font-size: 0.75rem;
-      color: var(--muted);
-      text-align: right;
-    }
-
-    .controls {
-      margin-top: 0.6rem;
-      display: grid;
-      gap: 0.65rem;
-    }
-
-    .control {
-      display: grid;
-      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-      gap: 0.5rem;
       align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
     }
 
-    @media (max-width: 520px) {
-      .control {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .control label {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--muted);
-    }
-
-    .control span.value {
-      font-family: var(--mono);
-      color: var(--accent);
-      font-size: 0.75rem;
-    }
-
-    .control input[type="range"] {
-      width: 100%;
-      appearance: none;
-      height: 4px;
-      border-radius: 999px;
-      background: rgba(148, 163, 255, 0.3);
-      outline: none;
-    }
-
-    .control input[type="range"]::-webkit-slider-thumb {
-      appearance: none;
-      width: 14px;
-      height: 14px;
-      border-radius: 999px;
-      background: var(--accent);
-      border: 2px solid #020617;
-      box-shadow: 0 0 0 4px rgba(0, 245, 255, 0.18);
-      cursor: pointer;
-      transition: transform 0.12s ease-out;
-    }
-    .control input[type="range"]::-moz-range-thumb {
-      width: 14px;
-      height: 14px;
-      border-radius: 999px;
-      background: var(--accent);
-      border: 2px solid #020617;
-      box-shadow: 0 0 0 4px rgba(0, 245, 255, 0.18);
-      cursor: pointer;
-      transition: transform 0.12s ease-out;
-    }
-    .control input[type="range"]:active::-webkit-slider-thumb,
-    .control input[type="range"]:active::-moz-range-thumb {
-      transform: scale(1.08);
-    }
-
-    .chip-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      margin-top: 0.7rem;
-    }
-
-    .chip {
-      font-family: var(--mono);
-      font-size: 0.68rem;
-      padding: 0.2rem 0.55rem;
-      border-radius: 999px;
-      border: 1px solid rgba(148, 163, 255, 0.35);
-      color: var(--muted);
-      background: rgba(15, 23, 42, 0.75);
-      backdrop-filter: blur(4px);
+    #ui label span.lbl {
+      flex: 1;
       white-space: nowrap;
     }
 
-    .aside {
-      position: relative;
-      border-radius: 14px;
-      padding: 1rem 1rem 0.9rem;
-      background: linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.9));
-      box-shadow:
-        inset 0 0 0 1px rgba(148, 163, 255, 0.2),
-        0 16px 35px rgba(0, 0, 0, 0.85);
-      display: flex;
+    #ui input[type="number"] {
+      width: 90px;
+      text-align: right;
+    }
+
+    #ui .row-slider {
       flex-direction: column;
-      gap: 0.9rem;
-      font-size: 0.84rem;
+      align-items: flex-start;
     }
 
-    .aside-heading {
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--muted);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.4rem;
+    #ui input[type="range"] {
+      width: 100%;
     }
 
-    .badge {
-      font-size: 0.65rem;
-      padding: 0.1rem 0.55rem;
-      border-radius: 999px;
-      border: 1px solid rgba(0, 245, 255, 0.45);
-      color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
+    #ui button {
+      margin-top: 4px;
+      padding: 4px 8px;
+      font-size: 13px;
     }
 
-    .aside p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.5;
+    .compass-label {
+      position: absolute;
+      font-weight: bold;
+      pointer-events: none;
+      font-size: 14px;
     }
 
-    .ext-link {
-      margin-top: auto;
-      padding-top: 0.3rem;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.55rem;
-      align-items: center;
-      justify-content: space-between;
+    .north {
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
     }
 
-    .btn-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.45rem 0.8rem;
-      border-radius: 999px;
-      border: 1px solid rgba(0, 245, 255, 0.7);
-      background: radial-gradient(circle at top left, rgba(0, 245, 255, 0.16), rgba(15, 23, 42, 0.85));
-      color: var(--text);
+    .south {
+      bottom: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .east {
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .west {
+      left: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    #resultOverlay {
+      position: fixed;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.75);
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    #resultTable {
+      display: table;
+      border-collapse: collapse;
+    }
+
+    .result-row {
+      display: table-row;
+    }
+
+    .result-label,
+    .result-value {
+      display: table-cell;
+      padding: 2px 6px;
+      white-space: nowrap;
+    }
+
+    .result-label {
+      opacity: 0.8;
+    }
+
+    .result-value {
+      font-weight: 600;
+      padding-left: 10px;
+    }
+
+    /* Home-Button oben rechts */
+    #homeLink {
+      position: fixed;
+      top: 10px;
+      right: 12px;
+      z-index: 20;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
       text-decoration: none;
-      font-family: var(--mono);
-      font-size: 0.8rem;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
+      font-size: 13px;
+      border: 1px solid rgba(255,255,255,0.25);
     }
 
-    .btn-link span.icon {
-      font-size: 1rem;
-      transform: translateY(1px);
+    #homeLink:hover {
+      background: rgba(255,255,255,0.12);
     }
 
-    .btn-link:hover {
-      box-shadow: 0 0 18px rgba(0, 245, 255, 0.4);
-      transform: translateY(-1px);
+    /* Menü-Toggle oben links */
+    #toggleUiBtn {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 20;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.25);
+      font-size: 13px;
+      cursor: pointer;
     }
 
-    .ext-note {
-      font-size: 0.7rem;
-      color: var(--muted);
-      font-family: var(--mono);
-      opacity: 0.85;
-    }
-
-    ::selection {
-      background: rgba(0, 245, 255, 0.3);
-      color: #f9fafb;
+    #toggleUiBtn:hover {
+      background: rgba(255,255,255,0.12);
     }
   </style>
 </head>
-<body class="scanlines">
-<main class="shell">
-  <header>
-    <div class="title">
-      <div class="title-main">
-        <span>lucsch</span>
-      </div>
-      <div class="dots">
-        <span></span><span></span><span></span>
+<body>
+  <!-- Home-Link relativ zum Ordner -->
+  <a id="homeLink" href="./">Home</a>
+  <!-- Menü-Toggle -->
+  <button id="toggleUiBtn" type="button">Menü</button>
+
+  <div id="container">
+    <!-- 3D-Ansicht -->
+    <div id="view3d" class="view">
+      <canvas id="canvas3d"></canvas>
+      <div id="ui">
+        <label>
+          <span class="lbl">PV-Leistung (W)</span>
+          <input type="number" id="wattPeak" value="500" step="100" />
+        </label>
+        <label>
+          <span class="lbl">Strompreis (€/kWh)</span>
+          <input type="number" id="pricePerKwh" value="0.25" step="0.01" />
+        </label>
+        <label>
+          <span class="lbl">Dachneigung (°)</span>
+          <input type="number" id="roofTilt" value="30" step="1" />
+        </label>
+        <label>
+          <span class="lbl">Dach-Azimut PV (0° = Süd)</span>
+          <input type="number" id="roofAz" value="0" step="1" />
+        </label>
+        <label>
+          <span class="lbl">Modulneigung (°)</span>
+          <!-- hier darfst du auch negative Werte eingeben -->
+          <input type="number" id="moduleTilt" value="0" step="1" />
+        </label>
+        <label class="row-slider">
+          <span class="lbl">Modulneigung (Slider) (°)</span>
+          <!-- Slider bleibt 0..90 -->
+          <input type="range" id="moduleSlider" min="0" max="90" value="0" />
+        </label>
+
+        <!-- Kamera-Höhe -->
+        <label>
+          <span class="lbl">Kamera-Höhe Z</span>
+          <input type="number" id="camHeight" value="0" step="0.5" />
+        </label>
+
+        <label>
+          <span class="lbl">
+            <input type="checkbox" id="showNormal3D" checked />
+            Modul-Normale anzeigen
+          </span>
+        </label>
+        <button id="btnOptimize" type="button">
+          Optimale Modulneigung
+        </button>
       </div>
     </div>
-    <div class="subline">
-      <span>PV · code · slight overengineering</span>
+
+    <!-- Vogelperspektive -->
+    <div id="view2d" class="view">
+      <canvas id="canvas2d"></canvas>
+      <div class="compass-label north">N</div>
+      <div class="compass-label south">S</div>
+      <div class="compass-label east">O</div>
+      <div class="compass-label west">W</div>
     </div>
-  </header>
+  </div>
 
-  <section class="grid">
-    <!-- Left: pseudo-terminal with PV calculator -->
-    <section class="terminal" aria-label="lucsch pv shell">
-      <div class="terminal-header">
-        <div class="term-dot"></div>
-        <span>lucsch@hessen</span>
-        <span>·</span>
-        <span>pv-shell</span>
-      </div>
-      <div class="term-body">
-        <div>
-          <div><span class="prompt">lucsch@pv</span>:<span class="path">~/hessen</span>$ ./yield --wp 10000 --tilt 30 --az 180</div>
-          <div class="comment"># quick&dirty mitteldeutschland-estimate · no cloud bullshit, just geometry + stats</div>
-        </div>
+  <div id="resultOverlay">
+    <div id="resultTable"></div>
+  </div>
 
-        <div class="controls">
-          <div class="control">
-            <div>
-              <label for="wp">Watt&nbsp;Peak</label>
-              <div class="chip-row">
-                <span class="chip">1&nbsp;kWp ≈ 965&nbsp;kWh/a</span>
-                <span class="chip">Hessen-Mitte&nbsp;Preset</span>
-              </div>
-            </div>
-            <div>
-              <input id="wp" type="range" min="1000" max="15000" step="500" value="10000" />
-              <span class="value"><span id="wp-val">10.0</span>&nbsp;kWp</span>
-            </div>
-          </div>
+  <!-- Three.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    /* === PV-Yield-Modul ========================================= */
 
-          <div class="control">
-            <div>
-              <label for="tilt">Neigung</label>
-              <span class="value"><span id="tilt-val">30</span>°</span>
-            </div>
-            <div>
-              <input id="tilt" type="range" min="0" max="60" step="1" value="30" />
-            </div>
-          </div>
+    const yieldMatrix = [
+      /* tilt 0°  */ [871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871, 871],
+      /* tilt 10° */ [931, 931, 931, 921, 921, 911, 901, 891, 881, 861, 851, 841, 831, 811, 811, 801, 791, 791, 791],
+      /* tilt 20° */ [971, 971, 971, 961, 951, 931, 911, 891, 871, 851, 821, 801, 771, 751, 731, 711, 701, 701, 701],
+      /* tilt 30° */ [1001, 991, 991, 971, 961, 941, 911, 881, 851, 821, 791, 751, 721, 691, 661, 641, 621, 611, 611],
+      /* tilt 40° */ [1001, 991, 991, 971, 951, 931, 901, 861, 831, 791, 751, 711, 671, 631, 591, 561, 541, 521, 521],
+      /* tilt 50° */ [981, 971, 961, 951, 931, 901, 871, 831, 791, 751, 701, 661, 611, 561, 521, 481, 451, 441, 431],
+      /* tilt 60° */ [941, 931, 921, 911, 881, 851, 821, 781, 741, 701, 651, 601, 551, 501, 461, 411, 381, 361, 351],
+      /* tilt 70° */ [881, 871, 861, 851, 821, 791, 761, 721, 681, 631, 581, 541, 491, 441, 391, 351, 321, 291, 281],
+      /* tilt 80° */ [801, 791, 781, 771, 751, 721, 681, 651, 611, 561, 511, 471, 421, 371, 331, 291, 261, 241, 231],
+      /* tilt 90° */ [691, 691, 691, 671, 651, 631, 601, 561, 531, 481, 441, 401, 351, 311, 271, 241, 211, 191, 181]
+    ];
 
-          <div class="control">
-            <div>
-              <label for="az">Azimut</label>
-              <span class="value">
-                <span id="az-val">180</span>°
-                <span id="az-label" style="margin-left:0.25rem; color:var(--muted);">(Süd)</span>
-              </span>
-            </div>
-            <div>
-              <input id="az" type="range" min="0" max="360" step="5" value="180" />
-            </div>
-          </div>
-        </div>
+    const tiltGrid = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+    const azimuthDiffGrid = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180];
+    const OPT_YIELD = 1001.0;
+    const BASE_YIELD_KWH_PER_KWP = 965;
 
-        <div class="result-line">
-          <div>
-            ≈ <span class="result-kwh" id="kwh-out">9&nbsp;650</span> kWh&nbsp;/&nbsp;a
-          </div>
-          <div class="result-sub">
-            <div><span id="spec-out">965</span> kWh/kWp · Jahr</div>
-            <div><span id="vh-out">965</span> Vollbenutzungsstunden</div>
-          </div>
-        </div>
+    function interpolateYield(tilt, delta) {
+      const t = Math.max(0, Math.min(90, tilt));
+      const d = Math.max(0, Math.min(180, delta));
 
-        <div style="margin-top:0.7rem; font-size:0.72rem;" class="comment">
-          # Azimut 0° = Nord, 90° = Ost, 180° = Süd, 270° = West · Modell kalibriert auf Fulda/Hessen 2025
-        </div>
-      </div>
-    </section>
+      let i = 0;
+      while (i < tiltGrid.length - 1 && tiltGrid[i + 1] < t) i++;
 
-    <!-- Right: info + external link -->
-    <aside class="aside">
-      <div class="aside-heading">
-        <span>pv notes // hessen-preset</span>
-        <span class="badge">v0.1 nerd-build</span>
-      </div>
-      <p>
-        Mini-Spielplatz für einen Mitteldeutschland-PV-Schätzer.
-        Keine stündliche NASA-Zeitreihe, sondern ein bewusst
-        <span class="highlight">frech vereinfachtes Modell</span>,
-        grob an Fulda-Daten und Fraunhofer-Stats kalibriert.
-      </p>
-      <p>
-        Für „richtige“ Visualisierung mit Sonne-über-dem-Jahr
-        gibt’s natürlich noch ein Heavy-Tool:
-      </p>
+      let j = 0;
+      while (j < azimuthDiffGrid.length - 1 && azimuthDiffGrid[j + 1] < d) j++;
 
-      <div class="ext-link">
-        <a class="btn-link" href="./solar_visualization.html" target="_blank" rel="noreferrer">
-          <span class="icon">☀️</span>
-          <span>Solar&nbsp;Visualization</span>
-        </a>
-        <div class="ext-note">
-          opens in a new tab · bring your own curiosity
-        </div>
-      </div>
-    </aside>
-  </section>
-</main>
+      const t0 = tiltGrid[i];
+      const t1 = tiltGrid[Math.min(i + 1, tiltGrid.length - 1)];
+      const d0 = azimuthDiffGrid[j];
+      const d1 = azimuthDiffGrid[Math.min(j + 1, azimuthDiffGrid.length - 1)];
+      const tFrac = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
+      const dFrac = d1 === d0 ? 0 : (d - d0) / (d1 - d0);
 
-<script>
-  // --- PV model for central Germany / Hesse ---
-  // Simple orientation/tilt factor model, calibrated on ~965 kWh/kWp for South, ~35° tilt.
+      const y00 = yieldMatrix[i][j];
+      const y01 = yieldMatrix[i][Math.min(j + 1, azimuthDiffGrid.length - 1)];
+      const y10 = yieldMatrix[Math.min(i + 1, tiltGrid.length - 1)][j];
+      const y11 = yieldMatrix[Math.min(i + 1, tiltGrid.length - 1)][Math.min(j + 1, azimuthDiffGrid.length - 1)];
 
-  function pvYieldHessenKwhPerYear(wattPeak, tiltDeg, azimuthDeg) {
-    const powerKwp = wattPeak / 1000;
-    const Y_REF = 965; // kWh/kWp*a – mittlerer Wert für gut ausgerichtete Anlage in Hessen
+      const yInterp =
+        (1 - tFrac) * ((1 - dFrac) * y00 + dFrac * y01) +
+        tFrac * ((1 - dFrac) * y10 + dFrac * y11);
 
-    // Normalize azimuth and compute deviation from South
-    let az = ((azimuthDeg % 360) + 360) % 360;
-    let delta = Math.abs(az - 180);
-    if (delta > 180) delta = 360 - delta; // 0..180
-
-    // Azimuth factor: 0°=South, 90°=E/W, 180°=North
-    let kA;
-    if (delta <= 30) {
-      kA = 1.0;
-    } else if (delta <= 90) {
-      // 30..90°: 1.0 -> 0.9
-      kA = 1.0 - 0.1 * (delta - 30) / 60;
-    } else {
-      // 90..180°: 0.9 -> ~0.65
-      kA = 0.9 - 0.25 * (delta - 90) / 90;
-      if (kA < 0.65) kA = 0.65;
+      return yInterp;
     }
 
-    // Tilt factor – optimum ~35°, ca. ±3% bei ±20°
-    const dTilt = tiltDeg - 35;
-    let kT = 1.0 - 0.000075 * dTilt * dTilt;
-    if (kT < 0.9) kT = 0.9;
-    if (kT > 1.0) kT = 1.0;
+    function pvYieldHessen(wattPeak, tiltDeg, azimuthDeg) {
+      const powerKwp = wattPeak / 1000.0;
+      let az = ((azimuthDeg % 360) + 360) % 360;
+      let delta = Math.abs(az - 180);
+      if (delta > 180) delta = 360 - delta;
 
-    return powerKwp * Y_REF * kA * kT;
-  }
+      const specific = interpolateYield(tiltDeg, delta);
+      const factor = specific / OPT_YIELD;
+      return powerKwp * BASE_YIELD_KWH_PER_KWP * factor;
+    }
 
-  // --- UI wiring ---
-  const wpInput = document.getElementById("wp");
-  const tiltInput = document.getElementById("tilt");
-  const azInput = document.getElementById("az");
+    // *** HIER korrigiert: Modulrotation um -moduleTiltRad (wie im 3D-Modell) ***
+    function computeOrientation(roofTiltDeg, roofAzPV, moduleTiltDeg) {
+      const moduleTiltRad = THREE.MathUtils.degToRad(moduleTiltDeg);
+      const roofTiltRad   = THREE.MathUtils.degToRad(roofTiltDeg);
+      const geoRotRad     = THREE.MathUtils.degToRad(180 - roofAzPV); // 0° geo = Nord
 
-  const wpVal = document.getElementById("wp-val");
-  const tiltVal = document.getElementById("tilt-val");
-  const azVal = document.getElementById("az-val");
-  const azLabel = document.getElementById("az-label");
+      // Modul um lokale Y-Achse, aber mit NEGATIVEM Vorzeichen wie im buildHouse
+      const qModule = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0), -moduleTiltRad
+      );
+      const qRoof = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(1, 0, 0), -roofTiltRad
+      );
+      const qHouse = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 0, 1), geoRotRad
+      );
 
-  const kwhOut = document.getElementById("kwh-out");
-  const specOut = document.getElementById("spec-out");
-  const vhOut = document.getElementById("vh-out");
+      const qTotal = new THREE.Quaternion();
+      qTotal.multiplyQuaternions(qRoof, qModule);
+      qTotal.premultiply(qHouse);
 
-  function azDirectionLabel(az) {
-    if (az >= 345 || az < 15) return "(Nord)";
-    if (az >= 15 && az < 75) return "(Nordost)";
-    if (az >= 75 && az < 105) return "(Ost)";
-    if (az >= 105 && az < 165) return "(Südost)";
-    if (az >= 165 && az < 195) return "(Süd)";
-    if (az >= 195 && az < 255) return "(Südwest)";
-    if (az >= 255 && az < 285) return "(West)";
-    if (az >= 285 && az < 345) return "(Nordwest)";
-    return "";
-  }
+      const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(qTotal).normalize();
 
-  function formatNumber(x) {
-    return x.toLocaleString("de-DE", { maximumFractionDigits: 0 });
-  }
+      const tiltRad = Math.atan2(Math.hypot(normal.x, normal.y), normal.z);
+      const tiltDeg = tiltRad * 180 / Math.PI;
 
-  function update() {
-    const wp = Number(wpInput.value);
-    const tilt = Number(tiltInput.value);
-    const az = Number(azInput.value);
+      const horiz = new THREE.Vector3(normal.x, normal.y, 0);
+      let geoAz = 0;
+      if (horiz.lengthSq() > 1e-6) {
+        horiz.normalize();
+        geoAz = Math.atan2(horiz.x, horiz.y) * 180 / Math.PI;
+        if (geoAz < 0) geoAz += 360;
+      }
 
-    wpVal.textContent = (wp / 1000).toFixed(1);
-    tiltVal.textContent = tilt.toFixed(0);
-    azVal.textContent = az.toFixed(0);
-    azLabel.textContent = azDirectionLabel(az);
+      const pvAz = (geoAz - 180 + 360) % 360; // 0° = Süd
 
-    const kwhYear = pvYieldHessenKwhPerYear(wp, tilt, az);
-    const spec = kwhYear / (wp / 1000);
+      return { normal, tiltDeg, geoAz, pvAz };
+    }
 
-    kwhOut.textContent = formatNumber(kwhYear);
-    specOut.textContent = spec.toFixed(0);
-    vhOut.textContent = spec.toFixed(0);
-  }
+    function findOptimalModuleTilt(roofTiltDeg, roofAzPV) {
+      let bestTilt = 0;
+      let bestYield = -Infinity;
 
-  wpInput.addEventListener("input", update);
-  tiltInput.addEventListener("input", update);
-  azInput.addEventListener("input", update);
+      for (let tilt = -90; tilt <= 90; tilt += 1) {
+        const { tiltDeg, geoAz } = computeOrientation(roofTiltDeg, roofAzPV, tilt);
+        const y = pvYieldHessen(1000, tiltDeg, geoAz);
+        if (y > bestYield) {
+          bestYield = y;
+          bestTilt = tilt;
+        }
+      }
+      return bestTilt;
+    }
 
-  update();
+    /* === Visualisierung =========================================== */
 
-  // Little console flex
-  console.log("%c lucsch pv-shell ", "background:#00f5ff;color:#020617;padding:2px 6px;border-radius:4px;font-family:monospace");
-  console.log("quick&dirty Hessen preset. no guarantees. if you sue, you get paid in kWh.");
-</script>
+    let renderer3D, renderer2D;
+    let scene3D, scene2D;
+    let camera3D, camera2D;
+    let house3D, house2D;
+    let module3D, module2D;
+    let arrow2D, arrow3D;
+    let ground3D, ground2D;
+
+    let camRadius = 12;
+    let camTheta  = Math.PI * 0.6;
+    const camPhi  = Math.PI * 0.4;
+    let camHeightOffset = 0;
+
+    let isMouseDown = false;
+    let lastMouseX = 0;
+
+    // Touch-Status
+    let isTouchRotating = false;
+    let isTouchZooming  = false;
+    let touchLastX = 0;
+    let lastTouchDistance = 0;
+
+    let uiVisible = true;
+
+    window.addEventListener('load', () => {
+      if (typeof THREE === 'undefined') {
+        console.error('Three.js konnte nicht geladen werden.');
+        return;
+      }
+      init();
+      attachUIHandlers();
+      updateScene();
+      animate();
+    });
+
+    function init() {
+      scene3D = new THREE.Scene();
+      scene2D = new THREE.Scene();
+
+      const canvas3d = document.getElementById('canvas3d');
+      renderer3D = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
+      renderer3D.setPixelRatio(window.devicePixelRatio);
+
+      const canvas2d = document.getElementById('canvas2d');
+      renderer2D = new THREE.WebGLRenderer({ canvas: canvas2d, antialias: true });
+      renderer2D.setPixelRatio(window.devicePixelRatio);
+
+      camera3D = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+      camera3D.up.set(0, 0, 1);
+      updateCameraPosition();
+
+      const aspect2D = canvas2d.clientWidth / canvas2d.clientHeight || 1;
+      const frustumSize = 12;
+      camera2D = new THREE.OrthographicCamera(
+        (-frustumSize * aspect2D) / 2,
+        ( frustumSize * aspect2D) / 2,
+        frustumSize / 2,
+        -frustumSize / 2,
+        -100,
+        100
+      );
+      camera2D.up.set(0, 1, 0);
+      camera2D.position.set(0, 0, 20);
+      camera2D.lookAt(0, 0, 0);
+
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+      hemiLight.position.set(0, 0, 1);
+      scene3D.add(hemiLight);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight.position.set(5, 5, 5);
+      scene3D.add(dirLight);
+
+      scene2D.add(hemiLight.clone());
+      scene2D.add(dirLight.clone());
+
+      const axesHelper = new THREE.AxesHelper(5);
+      scene3D.add(axesHelper);
+
+      const groundGeom = new THREE.PlaneGeometry(40, 40);
+      const groundMat  = new THREE.MeshPhongMaterial({
+        color: 0x111111,
+        side: THREE.DoubleSide
+      });
+      ground3D = new THREE.Mesh(groundGeom, groundMat);
+      ground3D.position.z = 0;
+      scene3D.add(ground3D);
+
+      ground2D = new THREE.Mesh(groundGeom, groundMat.clone());
+      ground2D.position.z = 0;
+      scene2D.add(ground2D);
+
+      window.addEventListener('resize', onWindowResize);
+      onWindowResize();
+
+      const view3dDiv = document.getElementById('view3d');
+      // Maus
+      view3dDiv.addEventListener('mousedown', onMouseDown);
+      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('mousemove', onMouseMove);
+      view3dDiv.addEventListener('wheel', onWheel, { passive: false });
+      // Touch
+      view3dDiv.addEventListener('touchstart', onTouchStart, { passive: false });
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
+      window.addEventListener('touchend', onTouchEnd);
+      window.addEventListener('touchcancel', onTouchEnd);
+    }
+
+    function attachUIHandlers() {
+      const slider      = document.getElementById('moduleSlider');
+      const tiltInput   = document.getElementById('moduleTilt');
+      const roofTiltIn  = document.getElementById('roofTilt');
+      const roofAzIn    = document.getElementById('roofAz');
+      const showNormIn  = document.getElementById('showNormal3D');
+      const wpInput     = document.getElementById('wattPeak');
+      const priceInput  = document.getElementById('pricePerKwh');
+      const camHeightIn = document.getElementById('camHeight');
+      const btnOpt      = document.getElementById('btnOptimize');
+      const toggleBtn   = document.getElementById('toggleUiBtn');
+
+      slider.addEventListener('input', () => {
+        tiltInput.value = slider.value;
+        updateScene();
+      });
+      tiltInput.addEventListener('input', () => {
+        const num = parseFloat(tiltInput.value) || 0;
+        const sliderVal = clamp(num, 0, 90);
+        slider.value = sliderVal;
+        updateScene();
+      });
+      roofTiltIn.addEventListener('input', updateScene);
+      roofAzIn.addEventListener('input', updateScene);
+      showNormIn.addEventListener('change', updateScene);
+      wpInput.addEventListener('input', updateScene);
+      priceInput.addEventListener('input', updateScene);
+
+      camHeightIn.addEventListener('input', () => {
+        camHeightOffset = parseFloat(camHeightIn.value) || 0;
+        updateCameraPosition();
+      });
+
+      btnOpt.addEventListener('click', () => {
+        const roofTiltDeg = parseFloat(document.getElementById('roofTilt').value) || 0;
+        const roofAzPV    = parseFloat(document.getElementById('roofAz').value) || 0;
+        const bestTilt    = findOptimalModuleTilt(roofTiltDeg, roofAzPV);
+        document.getElementById('moduleTilt').value   = bestTilt.toFixed(0);
+        document.getElementById('moduleSlider').value = clamp(bestTilt, 0, 90).toFixed(0);
+        updateScene();
+      });
+
+      toggleBtn.addEventListener('click', () => {
+        uiVisible = !uiVisible;
+        const ui = document.getElementById('ui');
+        ui.style.display = uiVisible ? 'block' : 'none';
+      });
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function azimuthLabel(pvAz) {
+      const dirs = ['Süd', 'Südwest', 'West', 'Nordwest', 'Nord', 'Nordost', 'Ost', 'Südost'];
+      const idx = Math.round(pvAz / 45) % 8;
+      return dirs[idx];
+    }
+
+    function updateScene() {
+      let roofTiltDeg   = parseFloat(document.getElementById('roofTilt').value) || 0;
+      let roofAzPV      = parseFloat(document.getElementById('roofAz').value) || 0;
+      let moduleTiltDeg = parseFloat(document.getElementById('moduleTilt').value) || 0;
+      const wattPeak    = parseFloat(document.getElementById('wattPeak').value) || 0;
+      let pricePerKwh   = parseFloat(document.getElementById('pricePerKwh').value) || 0;
+
+      moduleTiltDeg = clamp(moduleTiltDeg, -90, 90);
+      document.getElementById('moduleTilt').value = moduleTiltDeg;
+      document.getElementById('moduleSlider').value = clamp(moduleTiltDeg, 0, 90);
+
+      roofAzPV = ((roofAzPV % 360) + 360) % 360;
+      document.getElementById('roofAz').value = roofAzPV;
+
+      pricePerKwh = Math.max(0, pricePerKwh);
+
+      if (house3D) scene3D.remove(house3D);
+      if (house2D) scene2D.remove(house2D);
+      if (arrow2D) scene2D.remove(arrow2D);
+      if (arrow3D) scene3D.remove(arrow3D);
+
+      house3D = buildHouse(roofTiltDeg, roofAzPV, moduleTiltDeg, true);
+      house2D = buildHouse(roofTiltDeg, roofAzPV, moduleTiltDeg, false);
+      scene3D.add(house3D);
+      scene2D.add(house2D);
+
+      module3D = house3D.userData.module;
+      module2D = house2D.userData.module;
+
+      const { normal, tiltDeg, geoAz, pvAz } =
+        computeOrientation(roofTiltDeg, roofAzPV, moduleTiltDeg);
+
+      const yieldKWh = wattPeak > 0
+        ? pvYieldHessen(wattPeak, tiltDeg, geoAz)
+        : 0;
+
+      const savings10y = (wattPeak > 0 && pricePerKwh > 0)
+        ? yieldKWh * pricePerKwh * 10
+        : 0;
+
+      const resultTable = document.getElementById('resultTable');
+      const dirName = azimuthLabel(pvAz);
+
+      let rowsHtml = '';
+      rowsHtml += '<div class="result-row">' +
+                    '<div class="result-label">Richtung:</div>' +
+                    '<div class="result-value">' + dirName +
+                      ' (' + pvAz.toFixed(1).replace('.', ',') + '°)</div>' +
+                  '</div>';
+      rowsHtml += '<div class="result-row">' +
+                    '<div class="result-label">Neigung:</div>' +
+                    '<div class="result-value">' +
+                      tiltDeg.toFixed(1).replace('.', ',') + '° über dem Boden</div>' +
+                  '</div>';
+
+      if (wattPeak > 0) {
+        rowsHtml += '<div class="result-row">' +
+                      '<div class="result-label">Ertrag (Hessen, ca.):</div>' +
+                      '<div class="result-value">~' +
+                        yieldKWh.toFixed(0).replace('.', ',') + ' kWh/Jahr</div>' +
+                    '</div>';
+        if (pricePerKwh > 0) {
+          rowsHtml += '<div class="result-row">' +
+                        '<div class="result-label">Strompreis:</div>' +
+                        '<div class="result-value">' +
+                          pricePerKwh.toFixed(2).replace('.', ',') + ' €/kWh</div>' +
+                      '</div>';
+          rowsHtml += '<div class="result-row">' +
+                        '<div class="result-label">Ersparnis (10 Jahre, ca.):</div>' +
+                        '<div class="result-value">~' +
+                          savings10y.toFixed(0).replace('.', ',') + ' €</div>' +
+                      '</div>';
+        }
+      }
+
+      resultTable.innerHTML = rowsHtml;
+
+      // Pfeil in der Vogelperspektive
+      const arrowOrigin2 = new THREE.Vector3();
+      module2D.getWorldPosition(arrowOrigin2);
+
+      const proj2 = new THREE.Vector3(normal.x, normal.y, 0);
+      let arrowDir2 = new THREE.Vector3(1, 0, 0);
+      if (proj2.lengthSq() > 1e-6) arrowDir2 = proj2.normalize();
+
+      arrow2D = new THREE.ArrowHelper(
+        arrowDir2,
+        arrowOrigin2,
+        2.0,
+        0xff0000,
+        0.3,
+        0.2
+      );
+      arrow2D.renderOrder = 10;
+      arrow2D.line.material.depthTest = false;
+      arrow2D.cone.material.depthTest = false;
+      scene2D.add(arrow2D);
+
+      // Pfeil in 3D
+      const showNormal3D = document.getElementById('showNormal3D').checked;
+      if (showNormal3D) {
+        const arrowOrigin3 = new THREE.Vector3();
+        module3D.getWorldPosition(arrowOrigin3);
+        arrowOrigin3.add(normal.clone().multiplyScalar(0.02));
+
+        arrow3D = new THREE.ArrowHelper(
+          normal.clone().normalize(),
+          arrowOrigin3,
+          2.0,
+          0x00ff00,
+          0.3,
+          0.2
+        );
+        arrow3D.renderOrder = 10;
+        arrow3D.line.material.depthTest = false;
+        arrow3D.cone.material.depthTest = false;
+        scene3D.add(arrow3D);
+      }
+    }
+
+    function buildHouse(roofTiltDeg, roofAzPV, moduleTiltDeg, for3D) {
+      const house = new THREE.Group();
+
+      const houseWidth  = 4;
+      const houseDepth  = 4;
+      const houseHeight = 2;
+
+      const roofTiltRad = THREE.MathUtils.degToRad(roofTiltDeg);
+
+      // Wände: X/Y Grundfläche, Z Höhe
+      const wallGeom = new THREE.BoxGeometry(houseWidth, houseDepth, houseHeight);
+      const wallMat  = new THREE.MeshPhongMaterial({
+        color: for3D ? 0x333333 : 0x222222,
+        flatShading: true
+      });
+      const walls = new THREE.Mesh(wallGeom, wallMat);
+      walls.position.set(0, 0, houseHeight / 2);
+      house.add(walls);
+
+      const halfDepthHouse = houseDepth / 2;
+      const eaveOverhang   = 0.3;
+      const halfDepthRoof  = halfDepthHouse + eaveOverhang;
+
+      let s;
+      if (Math.abs(roofTiltRad) < 1e-3) {
+        s = halfDepthRoof;
+      } else {
+        s = halfDepthRoof / Math.cos(roofTiltRad);
+      }
+
+      const hExtra  = s * Math.sin(roofTiltRad);
+      const ridgeZ  = houseHeight + hExtra;
+
+      const widthOverhang = houseWidth * 1.05;
+      const roofGeom = new THREE.PlaneGeometry(widthOverhang, s);
+
+      const roofMat1 = new THREE.MeshPhongMaterial({
+        color: for3D ? 0x555555 : 0x444444,
+        side: THREE.DoubleSide,
+        flatShading: true
+      });
+      const roofMat2 = new THREE.MeshPhongMaterial({
+        color: for3D ? 0x444444 : 0x333333,
+        side: THREE.DoubleSide,
+        flatShading: true
+      });
+
+      // Dachseite 1 (positive Y)
+      const roofSide1Pivot = new THREE.Group();
+      roofSide1Pivot.position.set(0, 0, ridgeZ);
+      roofSide1Pivot.rotation.x = -roofTiltRad;
+
+      const roofSide1 = new THREE.Mesh(roofGeom, roofMat1);
+      roofSide1.position.set(0, s / 2, 0);
+      roofSide1Pivot.add(roofSide1);
+      house.add(roofSide1Pivot);
+
+      // Dachseite 2 (negative Y)
+      const roofSide2Pivot = new THREE.Group();
+      roofSide2Pivot.position.set(0, 0, ridgeZ);
+      roofSide2Pivot.rotation.x =  roofTiltRad;
+
+      const roofSide2 = new THREE.Mesh(roofGeom, roofMat2);
+      roofSide2.position.set(0, -s / 2, 0);
+      roofSide2Pivot.add(roofSide2);
+      house.add(roofSide2Pivot);
+
+      // Modul auf Dachseite 1
+      const moduleWidth  = 1.0;
+      const moduleHeight = 1.8;
+
+      const moduleGeom = new THREE.PlaneGeometry(moduleWidth, moduleHeight);
+      const moduleMat  = new THREE.MeshPhongMaterial({
+        color: 0x00c8ff,
+        side: THREE.DoubleSide,
+        emissive: for3D ? 0x001020 : 0x000000,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
+      });
+
+      const modulePivot = new THREE.Group();
+      roofSide1Pivot.add(modulePivot);
+
+      const moduleOffsetAlongSlope = s * 0.4;
+
+      const baseGap = 0.01;
+
+      const tiltRad = THREE.MathUtils.degToRad(moduleTiltDeg);
+
+      let zLift = 0;
+      if (moduleTiltDeg < 0) {
+        const tiltRad = THREE.MathUtils.degToRad(moduleTiltDeg);
+        // vorher: (moduleWidth / 2)
+        zLift = Math.abs(Math.sin(tiltRad)) * moduleWidth;
+      }
+
+      modulePivot.position.set(0, moduleOffsetAlongSlope, baseGap + zLift);
+
+
+      const moduleMesh = new THREE.Mesh(moduleGeom, moduleMat);
+      // Achse an der rechten Kante (von vorne gesehen)
+      moduleMesh.position.set(+moduleWidth / 2, 0, 0);
+      modulePivot.add(moduleMesh);
+
+      // Kippung um lokale Y-Achse (negativ => „nach rechts“ kippen)
+      modulePivot.rotation.y = -THREE.MathUtils.degToRad(moduleTiltDeg);
+
+      house.userData.module = moduleMesh;
+
+      const geoRotDeg = 180 - roofAzPV;
+      house.rotation.z = THREE.MathUtils.degToRad(geoRotDeg);
+
+      return house;
+    }
+
+    function onWindowResize() {
+      const view3d = document.getElementById('view3d');
+      const view2d = document.getElementById('view2d');
+
+      renderer3D.setSize(view3d.clientWidth, view3d.clientHeight);
+      camera3D.aspect = view3d.clientWidth / view3d.clientHeight;
+      camera3D.updateProjectionMatrix();
+
+      renderer2D.setSize(view2d.clientWidth, view2d.clientHeight);
+      const aspect2D = view2d.clientWidth / view2d.clientHeight || 1;
+      const frustumSize = 12;
+      camera2D.left   = (-frustumSize * aspect2D) / 2;
+      camera2D.right  = ( frustumSize * aspect2D) / 2;
+      camera2D.top    =  frustumSize / 2;
+      camera2D.bottom = -frustumSize / 2;
+      camera2D.updateProjectionMatrix();
+    }
+
+    function updateCameraPosition() {
+      const x = camRadius * Math.sin(camPhi) * Math.cos(camTheta);
+      const y = camRadius * Math.sin(camPhi) * Math.sin(camTheta);
+      const z = camRadius * Math.cos(camPhi) + camHeightOffset;
+      camera3D.position.set(x, y, z);
+      camera3D.lookAt(0, 0, 0);
+    }
+
+    // Maussteuerung
+    function onMouseDown(event) {
+      if (event.target.closest('#ui')) return;
+      isMouseDown = true;
+      lastMouseX = event.clientX;
+    }
+    function onMouseUp() { isMouseDown = false; }
+    function onMouseMove(event) {
+      if (!isMouseDown) return;
+      const dx = event.clientX - lastMouseX;
+      lastMouseX = event.clientX;
+      const rotSpeed = 0.005;
+      camTheta -= dx * rotSpeed;
+      updateCameraPosition();
+    }
+    function onWheel(event) {
+      event.preventDefault();
+      const zoomSpeed = 0.02;
+      camRadius += event.deltaY * zoomSpeed;
+      camRadius = Math.max(4, Math.min(40, camRadius));
+      updateCameraPosition();
+    }
+
+    // Helper: prüft, ob Touch auf dem UI liegt
+    function isTouchOverUI(event) {
+      const ui = document.getElementById('ui');
+      if (!ui || ui.style.display === 'none') return false;
+      const touches = event.touches && event.touches.length
+        ? event.touches
+        : (event.changedTouches || []);
+      for (let i = 0; i < touches.length; i++) {
+        const t = touches[i];
+        const el = document.elementFromPoint(t.clientX, t.clientY);
+        if (el && el.closest('#ui')) return true;
+      }
+      return false;
+    }
+
+    function getTouchDistance(event) {
+      if (event.touches.length < 2) return 0;
+      const dx = event.touches[0].clientX - event.touches[1].clientX;
+      const dy = event.touches[0].clientY - event.touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function onTouchStart(event) {
+      if (isTouchOverUI(event)) return;
+
+      if (event.touches.length === 1) {
+        isTouchRotating = true;
+        isTouchZooming = false;
+        touchLastX = event.touches[0].clientX;
+      } else if (event.touches.length === 2) {
+        isTouchRotating = false;
+        isTouchZooming = true;
+        lastTouchDistance = getTouchDistance(event);
+      }
+      event.preventDefault();
+    }
+
+    function onTouchMove(event) {
+      if (isTouchOverUI(event)) return;
+
+      if (event.touches.length === 1 && isTouchRotating) {
+        const x = event.touches[0].clientX;
+        const dx = x - touchLastX;
+        touchLastX = x;
+        const rotSpeed = 0.005;
+        camTheta -= dx * rotSpeed;
+        updateCameraPosition();
+      } else if (event.touches.length === 2 && isTouchZooming) {
+        const newDist = getTouchDistance(event);
+        const delta = lastTouchDistance - newDist;
+        lastTouchDistance = newDist;
+        const zoomSpeed = 0.02;
+        camRadius += (delta * zoomSpeed) / 10;
+        camRadius = Math.max(4, Math.min(40, camRadius));
+        updateCameraPosition();
+      }
+      event.preventDefault();
+    }
+
+    function onTouchEnd(event) {
+      if (event.touches.length === 0) {
+        isTouchRotating = false;
+        isTouchZooming = false;
+      } else if (event.touches.length === 1) {
+        isTouchZooming = false;
+        isTouchRotating = true;
+        touchLastX = event.touches[0].clientX;
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer3D.render(scene3D, camera3D);
+      renderer2D.render(scene2D, camera2D);
+    }
+  </script>
 </body>
 </html>
