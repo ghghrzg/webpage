@@ -173,8 +173,8 @@
   </style>
 </head>
 <body>
-  <!-- kleiner Home-Link nach index.html -->
-  <a id="homeLink" href="https://ghghrzg.github.io/webpage/">Home</a>
+  <!-- Home-Link relativ zum Projekt-Root / Ordner -->
+  <a id="homeLink" href="./">Home</a>
 
   <div id="container">
     <!-- 3D-Ansicht -->
@@ -363,8 +363,15 @@
     let camRadius = 12;
     let camTheta  = Math.PI * 0.6;
     const camPhi  = Math.PI * 0.4;
+
     let isMouseDown = false;
     let lastMouseX = 0;
+
+    // Touch-Status (ein Finger drehen, zwei Finger zoomen)
+    let isTouchRotating = false;
+    let isTouchZooming  = false;
+    let touchLastX = 0;
+    let lastTouchDistance = 0;
 
     window.addEventListener('load', () => {
       if (typeof THREE === 'undefined') {
@@ -437,10 +444,16 @@
       onWindowResize();
 
       const view3dDiv = document.getElementById('view3d');
+      // Maus
       view3dDiv.addEventListener('mousedown', onMouseDown);
       window.addEventListener('mouseup', onMouseUp);
       window.addEventListener('mousemove', onMouseMove);
       view3dDiv.addEventListener('wheel', onWheel, { passive: false });
+      // Touch
+      view3dDiv.addEventListener('touchstart', onTouchStart, { passive: false });
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
+      window.addEventListener('touchend', onTouchEnd);
+      window.addEventListener('touchcancel', onTouchEnd);
     }
 
     function attachUIHandlers() {
@@ -700,16 +713,13 @@
 
       const moduleOffsetAlongSlope = s * 0.4;
 
-      // dynamischer Abstand: bei positiver Neigung Modul weiter vom Dach weg,
-      // damit es NICHT in die Fläche einklappt
+      // Abstand so wählen, dass bei jeder Modulneigung die gesamte Fläche über dem Dach bleibt:
       const moduleTiltRad = THREE.MathUtils.degToRad(moduleTiltDeg);
-      const baseGap = 0.01;
-      const extraGap = moduleTiltRad > 0
-        ? moduleWidth * Math.sin(moduleTiltRad)
-        : 0;
+      const baseGap = 0.01; // minimaler Abstand
+      const extraGap = (moduleWidth / 2) * Math.abs(Math.sin(moduleTiltRad));
       const clearance = baseGap + extraGap;
 
-      // Pivot-Linie liegt auf der Dachfläche, clearance hebt das Modul darüber an
+      // Pivot-Linie liegt auf der Dachfläche; clearance hebt die Fläche komplett drüber
       modulePivot.position.set(0, moduleOffsetAlongSlope, clearance);
 
       const moduleMesh = new THREE.Mesh(moduleGeom, moduleMat);
@@ -754,6 +764,7 @@
       camera3D.lookAt(0, 0, 0);
     }
 
+    // Maussteuerung
     function onMouseDown(event) {
       if (event.target.closest('#ui')) return;
       isMouseDown = true;
@@ -774,6 +785,60 @@
       camRadius += event.deltaY * zoomSpeed;
       camRadius = Math.max(4, Math.min(40, camRadius));
       updateCameraPosition();
+    }
+
+    // Touch-Helfer
+    function getTouchDistance(event) {
+      if (event.touches.length < 2) return 0;
+      const dx = event.touches[0].clientX - event.touches[1].clientX;
+      const dy = event.touches[0].clientY - event.touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function onTouchStart(event) {
+      if (event.target.closest('#ui')) return;
+      if (event.touches.length === 1) {
+        isTouchRotating = true;
+        isTouchZooming = false;
+        touchLastX = event.touches[0].clientX;
+      } else if (event.touches.length === 2) {
+        isTouchRotating = false;
+        isTouchZooming = true;
+        lastTouchDistance = getTouchDistance(event);
+      }
+      event.preventDefault();
+    }
+
+    function onTouchMove(event) {
+      if (event.touches.length === 1 && isTouchRotating) {
+        const x = event.touches[0].clientX;
+        const dx = x - touchLastX;
+        touchLastX = x;
+        const rotSpeed = 0.005;
+        camTheta -= dx * rotSpeed;
+        updateCameraPosition();
+      } else if (event.touches.length === 2 && isTouchZooming) {
+        const newDist = getTouchDistance(event);
+        const delta = lastTouchDistance - newDist;
+        lastTouchDistance = newDist;
+        const zoomSpeed = 0.02;
+        camRadius += (delta * zoomSpeed) / 10; // etwas empfindlicher dämpfen
+        camRadius = Math.max(4, Math.min(40, camRadius));
+        updateCameraPosition();
+      }
+      event.preventDefault();
+    }
+
+    function onTouchEnd(event) {
+      if (event.touches.length === 0) {
+        isTouchRotating = false;
+        isTouchZooming = false;
+      } else if (event.touches.length === 1) {
+        // ggf. von Zoom zurück zu Rotation
+        isTouchZooming = false;
+        isTouchRotating = true;
+        touchLastX = event.touches[0].clientX;
+      }
     }
 
     function animate() {
