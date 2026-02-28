@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Time Since X</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg0: #070911;
+      --bg1: #101428;
+      --bg2: #1d1f3a;
+      --ink: #f7f8ff;
+      --muted: #9aa5c7;
+      --accent: #7cf6ff;
+      --accent2: #ff7ad9;
+      --accent3: #ffd166;
+      --mono: "Fira Code", "Cascadia Code", "Menlo", "Consolas", monospace;
+      --display: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: radial-gradient(circle at 10% 15%, rgba(124, 246, 255, 0.2), transparent 55%),
+                  radial-gradient(circle at 85% 10%, rgba(255, 122, 217, 0.18), transparent 60%),
+                  linear-gradient(140deg, var(--bg0), var(--bg1) 55%, var(--bg2));
+      color: var(--ink);
+      font-family: var(--display);
+    }
+
+    body {
+      padding: 2.5rem 1.5rem 3.5rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .grain {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.04) 1px, transparent 1px, transparent 3px),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 4px);
+      opacity: 0.35;
+      z-index: -1;
+    }
+
+    .wrap {
+      width: min(1100px, 100%);
+      position: relative;
+    }
+
+    .home {
+      position: absolute;
+      top: -1.25rem;
+      right: 0;
+      color: var(--muted);
+      text-decoration: none;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+    }
+
+    .home:hover {
+      color: var(--ink);
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.8rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 3rem);
+      letter-spacing: 0.06em;
+    }
+
+    #headline[contenteditable="true"] {
+      cursor: text;
+      outline: none;
+      border-radius: 8px;
+      padding: 0.1rem 0.3rem;
+    }
+
+    #headline[contenteditable="true"]:focus {
+      background: rgba(124, 246, 255, 0.08);
+      box-shadow: 0 0 0 1px rgba(124, 246, 255, 0.25);
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.9rem;
+    }
+
+    .title-block {
+      min-width: 0;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      justify-self: end;
+    }
+
+    .btn {
+      border: 1px solid rgba(124, 246, 255, 0.5);
+      background: rgba(124, 246, 255, 0.12);
+      color: var(--ink);
+      padding: 0.45rem 0.9rem;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+
+    .btn.alt {
+      border-color: rgba(255, 209, 102, 0.6);
+      background: rgba(255, 209, 102, 0.12);
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 25px rgba(0, 0, 0, 0.35);
+    }
+
+    #btn-midnight {
+      min-width: 12ch;
+      text-align: center;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+      grid-template-areas: "picker totals";
+      gap: 1.6rem;
+    }
+
+    @media (max-width: 900px) {
+      header {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .grid {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+          "totals"
+          "picker";
+      }
+
+      .home {
+        position: static;
+      }
+    }
+
+    .panel-picker {
+      grid-area: picker;
+    }
+
+    .panel-totals {
+      grid-area: totals;
+    }
+
+    .panel {
+      background: rgba(12, 15, 30, 0.85);
+      border: 1px solid rgba(124, 246, 255, 0.15);
+      border-radius: 18px;
+      padding: 1.4rem;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+    }
+
+    .panel h2 {
+      margin: 0 0 1rem;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--muted);
+    }
+
+    .picker-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+    }
+
+    @media (max-width: 980px) {
+      .picker-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .picker-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    .picker-field {
+      background: rgba(18, 22, 44, 0.9);
+      border-radius: 14px;
+      padding: 0.75rem;
+      border: 1px solid rgba(124, 246, 255, 0.12);
+      display: grid;
+      gap: 0.5rem;
+    }
+
+    .field-label {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .field-control {
+      display: grid;
+      grid-template-rows: auto auto auto;
+      align-items: center;
+      justify-items: center;
+      gap: 0.4rem;
+    }
+
+    .spin {
+      width: 36px;
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 122, 217, 0.5);
+      background: rgba(255, 122, 217, 0.12);
+      color: var(--ink);
+      font-family: var(--mono);
+      cursor: pointer;
+    }
+
+    .spin.down {
+      border-color: rgba(124, 246, 255, 0.5);
+      background: rgba(124, 246, 255, 0.12);
+    }
+
+    .picker-input {
+      width: 100%;
+      text-align: center;
+      font-size: 1.3rem;
+      font-family: var(--mono);
+      color: var(--ink);
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 0.2rem 0;
+      letter-spacing: 0.08em;
+    }
+
+    .picker-input::selection {
+      background: rgba(124, 246, 255, 0.4);
+    }
+
+    .display {
+      margin-top: 1.2rem;
+      padding: 0.9rem 1rem;
+      border-radius: 12px;
+      background: linear-gradient(120deg, rgba(124, 246, 255, 0.12), rgba(255, 122, 217, 0.08));
+      border: 1px solid rgba(124, 246, 255, 0.2);
+      font-family: var(--mono);
+    }
+
+    .display .date {
+      font-size: 1.4rem;
+      letter-spacing: 0.08em;
+    }
+
+    .display .era {
+      color: var(--muted);
+      margin-top: 0.3rem;
+      font-size: 0.75rem;
+      letter-spacing: 0.16em;
+    }
+
+    .display .time {
+      margin-top: 0.35rem;
+      font-size: 1.05rem;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+    }
+
+    .results {
+      display: grid;
+      gap: 0.8rem;
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      padding: 0.65rem 0.9rem;
+      border-radius: 12px;
+      background: rgba(18, 22, 44, 0.85);
+      border: 1px solid rgba(124, 246, 255, 0.12);
+      font-family: var(--mono);
+    }
+
+    .result-row span.value {
+      color: var(--accent3);
+      font-size: 1rem;
+    }
+
+    .direction {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .direction b {
+      color: var(--accent);
+    }
+
+    .summary {
+      display: grid;
+      gap: 0.6rem;
+      margin-bottom: 0.9rem;
+      padding: 0.75rem 0.9rem;
+      border-radius: 14px;
+      background: rgba(18, 22, 44, 0.8);
+      border: 1px solid rgba(124, 246, 255, 0.14);
+      font-family: var(--mono);
+    }
+
+    .summary-main {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .summary-value {
+      font-size: 1.4rem;
+      letter-spacing: 0.08em;
+      color: var(--accent3);
+    }
+
+    .summary-label {
+      font-size: 0.75rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .note {
+      margin-top: 1rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <main class="wrap">
+    <a class="home" href="../">Home</a>
+    <header>
+      <div class="title-block">
+        <h1 id="headline" contenteditable="true" spellcheck="false">time since x</h1>
+        <div class="subtitle">custom picker, total time in every unit</div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btn-random" type="button">Random milestone</button>
+        <button class="btn alt" id="btn-now" type="button">Use now</button>
+        <button class="btn alt" id="btn-midnight" type="button">Set midnight</button>
+        <button class="btn" id="btn-copy" type="button">Copy link</button>
+      </div>
+    </header>
+
+    <section class="grid">
+      <section class="panel panel-picker">
+        <h2>target moment</h2>
+        <div class="picker-grid" id="picker">
+          <div class="picker-field" data-field="day">
+            <div class="field-label">day</div>
+            <div class="field-control">
+              <button class="spin up" data-delta="1" type="button">+</button>
+              <input class="picker-input" id="day" inputmode="numeric" />
+              <button class="spin down" data-delta="-1" type="button">-</button>
+            </div>
+          </div>
+          <div class="picker-field" data-field="month">
+            <div class="field-label">month</div>
+            <div class="field-control">
+              <button class="spin up" data-delta="1" type="button">+</button>
+              <input class="picker-input" id="month" inputmode="numeric" />
+              <button class="spin down" data-delta="-1" type="button">-</button>
+            </div>
+          </div>
+          <div class="picker-field" data-field="year">
+            <div class="field-label">year</div>
+            <div class="field-control">
+              <button class="spin up" data-delta="1" type="button">+</button>
+              <input class="picker-input" id="year" inputmode="numeric" />
+              <button class="spin down" data-delta="-1" type="button">-</button>
+            </div>
+          </div>
+          <div class="picker-field" data-field="hour">
+            <div class="field-label">hour</div>
+            <div class="field-control">
+              <button class="spin up" data-delta="1" type="button">+</button>
+              <input class="picker-input" id="hour" inputmode="numeric" />
+              <button class="spin down" data-delta="-1" type="button">-</button>
+            </div>
+          </div>
+          <div class="picker-field" data-field="minute">
+            <div class="field-label">minute</div>
+            <div class="field-control">
+              <button class="spin up" data-delta="1" type="button">+</button>
+              <input class="picker-input" id="minute" inputmode="numeric" />
+              <button class="spin down" data-delta="-1" type="button">-</button>
+            </div>
+          </div>
+          <div class="picker-field" data-field="second">
+            <div class="field-label">second</div>
+            <div class="field-control">
+              <button class="spin up" data-delta="1" type="button">+</button>
+              <input class="picker-input" id="second" inputmode="numeric" />
+              <button class="spin down" data-delta="-1" type="button">-</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="display">
+          <div class="date" id="display-date">--.--.----</div>
+          <div class="time" id="display-time">--:--:--</div>
+          <div class="era" id="display-era"></div>
+        </div>
+      </section>
+
+      <aside class="panel panel-totals">
+        <h2>time totals</h2>
+        <div class="summary">
+          <div class="direction">direction: <b id="direction">past</b></div>
+          <div class="summary-main">
+            <div class="summary-value" id="out-days-main">0.000</div>
+            <div class="summary-label" id="summary-label">days since</div>
+          </div>
+        </div>
+        <div class="results">
+          <div class="result-row"><span>total years</span><span class="value" id="out-years">0.000</span></div>
+          <div class="result-row"><span>total months</span><span class="value" id="out-months">0.000</span></div>
+          <div class="result-row"><span>total weeks</span><span class="value" id="out-weeks">0.000</span></div>
+          <div class="result-row"><span>total days</span><span class="value" id="out-days">0.000</span></div>
+          <div class="result-row"><span>total hours</span><span class="value" id="out-hours">0.000</span></div>
+          <div class="result-row"><span>total minutes</span><span class="value" id="out-minutes">0.000</span></div>
+          <div class="result-row"><span>total seconds</span><span class="value" id="out-seconds">0.000</span></div>
+        </div>
+        <div class="note">
+          months and years use average lengths (365.2425 days per year). years are
+          astronomical: year 0 equals 1 BC. range supported down to -10000.
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const minYear = -10000;
+    const maxYear = 5000000000;
+
+    const fields = {
+      day: { min: 1, max: 31, pad: 2 },
+      month: { min: 1, max: 12, pad: 2 },
+      year: { min: minYear, max: maxYear, pad: 4 },
+      hour: { min: 0, max: 23, pad: 2 },
+      minute: { min: 0, max: 59, pad: 2 },
+      second: { min: 0, max: 59, pad: 2 }
+    };
+
+    const inputs = {
+      day: document.getElementById("day"),
+      month: document.getElementById("month"),
+      year: document.getElementById("year"),
+      hour: document.getElementById("hour"),
+      minute: document.getElementById("minute"),
+      second: document.getElementById("second")
+    };
+
+    const displayDate = document.getElementById("display-date");
+    const displayTime = document.getElementById("display-time");
+    const displayEra = document.getElementById("display-era");
+    const directionEl = document.getElementById("direction");
+    const midnightBtn = document.getElementById("btn-midnight");
+    const copyBtn = document.getElementById("btn-copy");
+    const headline = document.getElementById("headline");
+    const summaryLabel = document.getElementById("summary-label");
+    const fieldOrder = ["day", "month", "year", "hour", "minute", "second"];
+
+    const outputs = {
+      years: document.getElementById("out-years"),
+      months: document.getElementById("out-months"),
+      weeks: document.getElementById("out-weeks"),
+      days: document.getElementById("out-days"),
+      daysMain: document.getElementById("out-days-main"),
+      hours: document.getElementById("out-hours"),
+      minutes: document.getElementById("out-minutes"),
+      seconds: document.getElementById("out-seconds")
+    };
+
+    const milestones = [
+      { id: "us_declaration_adopted", label: "U.S. Declaration adopted", iso: "1776-07-04" },
+      { id: "storming_bastille", label: "Bastille stormed", iso: "1789-07-14" },
+      { id: "jenner_smallpox_vaccination", label: "First smallpox vaccine", iso: "1796-05-14" },
+      { id: "first_telegraph_message", label: "First telegraph message", iso: "1844-05-24" },
+      { id: "first_telephone_call", label: "First telephone call", iso: "1876-03-10" },
+      { id: "x_rays_discovered", label: "X-rays discovered", iso: "1895-11-08" },
+      { id: "wright_first_powered_flight", label: "Wright powered flight", iso: "1903-12-17T10:35:00-05:00" },
+      { id: "penicillin_discovery_date", label: "Penicillin discovered", iso: "1928-09-28" },
+      { id: "un_official_start", label: "UN charter in force", iso: "1945-10-24" },
+      { id: "eniac_unveiled", label: "ENIAC unveiled", iso: "1946-02-14" },
+      { id: "transistor_demonstrated", label: "Transistor demo", iso: "1947-12-23" },
+      { id: "udhr_adopted", label: "UDHR adopted", iso: "1948-12-10" },
+      { id: "polio_vaccine_announced", label: "Salk polio vaccine", iso: "1955-04-12" },
+      { id: "sputnik_1_launch", label: "Sputnik 1 launch", iso: "1957-10-04T19:28:34Z" },
+      { id: "first_integrated_circuit_demo", label: "IC demo (Kilby)", iso: "1958-09-12" },
+      { id: "vostok_1_launch", label: "Vostok 1 launch", iso: "1961-04-12T06:07:00Z" },
+      { id: "vostok_6_launch", label: "Vostok 6 launch", iso: "1963-06-16T09:29:52Z" },
+      { id: "apollo_11_landing", label: "Apollo 11 landing", iso: "1969-07-20T20:17:40Z" },
+      { id: "apollo_11_first_step", label: "Moon first step", iso: "1969-07-21T02:56:15Z" },
+      { id: "intel_4004_released", label: "Intel 4004", iso: "1971-11-15" },
+      { id: "first_handheld_mobile_call", label: "First handheld mobile call", iso: "1973-04-03" },
+      { id: "voyager_1_launch", label: "Voyager 1 launch", iso: "1977-09-05T12:56:01Z" },
+      { id: "first_ivf_birth", label: "First IVF birth", iso: "1978-07-25" },
+      { id: "sts_1_liftoff", label: "STS-1 liftoff", iso: "1981-04-12T07:00:03-05:00" },
+      { id: "tcp_ip_flag_day", label: "TCP/IP flag day", iso: "1983-01-01" },
+      { id: "hubble_launch", label: "Hubble launch", iso: "1990-04-24T08:33:51-04:00" },
+      { id: "www_announced", label: "Web announced", iso: "1991-08-06" },
+      { id: "first_sms", label: "First SMS", iso: "1992-12-03" },
+      { id: "mars_pathfinder_landing", label: "Mars Pathfinder landing", iso: "1997-07-04T10:07:00-07:00" },
+      { id: "google_founded", label: "Google founded", iso: "1998-09-04" },
+      { id: "iss_zarya_launch", label: "ISS Zarya launch", iso: "1998-11-20T06:40:00Z" },
+      { id: "hgp_first_survey_announced", label: "Genome first survey", iso: "2000-06-26" },
+      { id: "wikipedia_launch", label: "Wikipedia launches", iso: "2001-01-15" },
+      { id: "euro_cash_introduced", label: "Euro cash introduced", iso: "2002-01-01" },
+      { id: "hgp_completed", label: "Genome completed", iso: "2003-04-14" },
+      { id: "youtube_founded", label: "YouTube founded", iso: "2005-02-14" },
+      { id: "iphone_introduced", label: "iPhone introduced", iso: "2007-01-09" },
+      { id: "crispr_paper_epub", label: "CRISPR-Cas9 paper", iso: "2012-06-28" },
+      { id: "higgs_announced", label: "Higgs discovery", iso: "2012-07-04" },
+      { id: "curiosity_landing", label: "Curiosity landing", iso: "2012-08-06T05:17:57Z" },
+      { id: "philae_touchdown", label: "Philae touchdown", iso: "2014-11-12T15:34:00Z" },
+      { id: "new_horizons_pluto_ca", label: "New Horizons at Pluto", iso: "2015-07-14T11:49:00Z" },
+      { id: "gw150914_detected", label: "GW150914 detected", iso: "2015-09-14T09:50:45Z" },
+      { id: "paris_agreement_adopted", label: "Paris Agreement", iso: "2015-12-12" },
+      { id: "first_black_hole_image_unveiled", label: "First black hole image", iso: "2019-04-10T09:00:00-04:00" },
+      { id: "crew_dragon_demo_2_launch", label: "Crew Dragon Demo-2", iso: "2020-05-30T19:22:45Z" },
+      { id: "perseverance_landing", label: "Perseverance landing", iso: "2021-02-18T20:55:00Z" },
+      { id: "jwst_launch", label: "JWST launch", iso: "2021-12-25T12:20:00Z" },
+      { id: "artemis_1_launch", label: "Artemis I launch", iso: "2022-11-16T06:47:44Z" },
+      { id: "dart_impact", label: "DART impact", iso: "2022-09-26T23:14:24.183Z" },
+      { id: "fda_first_crispr_therapy", label: "First CRISPR therapy", iso: "2023-12-08" },
+      { id: "odysseus_im1_moon_landing", label: "Odysseus IM-1 landing", iso: "2024-02-22T23:23:53Z" },
+      { id: "millennium_turn", label: "3rd millennium begins", iso: "2001-01-01T00:00:00Z" },
+      { id: "century_22_begins", label: "22nd century begins", iso: "2101-01-01T00:00:00Z" },
+      { id: "millennium_4_begins", label: "4th millennium begins", iso: "3001-01-01T00:00:00Z" },
+      { id: "sun_explodes", label: "Sun red giant (~)", iso: "+5000000000-01-01" }
+    ];
+
+    let customHeadline = false;
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function padNumber(value, pad) {
+      const abs = Math.abs(value);
+      const str = abs.toString().padStart(pad, "0");
+      return value < 0 ? `-${str}` : str;
+    }
+
+    function parseField(field, raw) {
+      const num = parseInt(String(raw).replace(/[^0-9-]/g, ""), 10);
+      return Number.isFinite(num) ? num : fields[field].min;
+    }
+
+    function mod(value, divisor) {
+      return ((value % divisor) + divisor) % divisor;
+    }
+
+    function isLeapYear(year) {
+      return mod(year, 4) === 0 && (mod(year, 100) !== 0 || mod(year, 400) === 0);
+    }
+
+    function daysInMonth(year, month) {
+      const days = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return days[month - 1] || 31;
+    }
+
+    function normalize(writeValues) {
+      let year = clamp(parseField("year", inputs.year.value), fields.year.min, fields.year.max);
+      let month = clamp(parseField("month", inputs.month.value), fields.month.min, fields.month.max);
+      let day = clamp(parseField("day", inputs.day.value), fields.day.min, fields.day.max);
+      const maxDay = daysInMonth(year, month);
+      day = clamp(day, fields.day.min, maxDay);
+
+      let hour = clamp(parseField("hour", inputs.hour.value), fields.hour.min, fields.hour.max);
+      let minute = clamp(parseField("minute", inputs.minute.value), fields.minute.min, fields.minute.max);
+      let second = clamp(parseField("second", inputs.second.value), fields.second.min, fields.second.max);
+
+      if (writeValues) {
+        inputs.year.value = padNumber(year, fields.year.pad);
+        inputs.month.value = padNumber(month, fields.month.pad);
+        inputs.day.value = padNumber(day, fields.day.pad);
+        inputs.hour.value = padNumber(hour, fields.hour.pad);
+        inputs.minute.value = padNumber(minute, fields.minute.pad);
+        inputs.second.value = padNumber(second, fields.second.pad);
+      }
+
+      return { year, month, day, hour, minute, second };
+    }
+
+    function formatNumber(value) {
+      return value.toLocaleString("en-GB", { maximumFractionDigits: 3 });
+    }
+
+    function updateDisplay(parts, deltaDays) {
+      const yearAbs = Math.abs(parts.year);
+      const dateStr = `${padNumber(parts.day, 2)}.${padNumber(parts.month, 2)}.${padNumber(yearAbs, 4)}`;
+      const timeStr = `${padNumber(parts.hour, 2)}:${padNumber(parts.minute, 2)}:${padNumber(parts.second, 2)}`;
+      const era = parts.year <= 0 ? "BC (astronomical year)" : "";
+
+      displayDate.textContent = dateStr;
+      displayTime.textContent = timeStr;
+      displayEra.textContent = era;
+
+      const direction = deltaDays >= 0 ? "past" : "future";
+      directionEl.textContent = direction;
+    }
+
+    function autoHeadline(deltaDays) {
+      return deltaDays >= 0 ? "time since x" : "time until x";
+    }
+
+    function formatYearIso(year) {
+      const abs = Math.abs(year);
+      const digits = abs.toString().padStart(4, "0");
+      return year < 0 ? `-${digits}` : digits;
+    }
+
+    function toIsoLocal(parts) {
+      const yearStr = formatYearIso(parts.year);
+      const dateStr = `${yearStr}-${padNumber(parts.month, 2)}-${padNumber(parts.day, 2)}`;
+      const timeStr = `${padNumber(parts.hour, 2)}:${padNumber(parts.minute, 2)}:${padNumber(parts.second, 2)}`;
+      return `${dateStr}T${timeStr}`;
+    }
+
+    function parseIso(raw) {
+      if (!raw) return null;
+      const text = raw.trim();
+      const match = text.match(/^([+-]?\d{1,10})-(\d{2})-(\d{2})(?:[T\s](\d{2})(?::(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?)?(Z|[+-]\d{2}:?\d{2})?)?$/);
+      if (!match) return null;
+      const year = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10);
+      const day = parseInt(match[3], 10);
+      const hour = match[4] ? parseInt(match[4], 10) : 0;
+      const minute = match[5] ? parseInt(match[5], 10) : 0;
+      const second = match[6] ? parseInt(match[6], 10) : 0;
+      const tz = match[7];
+
+      if (!tz) {
+        return { year, month, day, hour, minute, second };
+      }
+
+      let offsetMinutes = 0;
+      if (tz !== "Z") {
+        const sign = tz.startsWith("-") ? -1 : 1;
+        const rawTz = tz.slice(1);
+        const parts = rawTz.includes(":") ? rawTz.split(":") : [rawTz.slice(0, 2), rawTz.slice(2)];
+        const tzHour = parseInt(parts[0], 10) || 0;
+        const tzMinute = parseInt(parts[1], 10) || 0;
+        offsetMinutes = sign * (tzHour * 60 + tzMinute);
+      }
+
+      const utcMs = Date.UTC(year, month - 1, day, hour, minute, second) - offsetMinutes * 60000;
+      const local = new Date(utcMs);
+      return {
+        year: local.getFullYear(),
+        month: local.getMonth() + 1,
+        day: local.getDate(),
+        hour: local.getHours(),
+        minute: local.getMinutes(),
+        second: local.getSeconds()
+      };
+    }
+
+    function daysFromCivil(year, month, day) {
+      let y = year;
+      let m = month;
+      y -= m <= 2 ? 1 : 0;
+      const era = Math.floor(y / 400);
+      const yoe = y - era * 400;
+      const mAdj = m + (m > 2 ? -3 : 9);
+      const doy = Math.floor((153 * mAdj + 2) / 5) + day - 1;
+      const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
+      return era * 146097 + doe;
+    }
+
+    function diffDays(nowParts, targetParts) {
+      const nowDay = daysFromCivil(nowParts.year, nowParts.month, nowParts.day);
+      const targetDay = daysFromCivil(targetParts.year, targetParts.month, targetParts.day);
+      const nowSeconds = nowParts.hour * 3600 + nowParts.minute * 60 + nowParts.second;
+      const targetSeconds = targetParts.hour * 3600 + targetParts.minute * 60 + targetParts.second;
+      return (nowDay - targetDay) + (nowSeconds - targetSeconds) / 86400;
+    }
+
+    function nowParts() {
+      const now = new Date();
+      return {
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        day: now.getDate(),
+        hour: now.getHours(),
+        minute: now.getMinutes(),
+        second: now.getSeconds()
+      };
+    }
+
+    function updateOutputs(options = {}) {
+      const writeValues = options.writeValues !== false;
+      const parts = normalize(writeValues);
+      const current = nowParts();
+      const deltaDays = diffDays(current, parts);
+      const absDays = Math.abs(deltaDays);
+      const isMidnight = parts.hour === 0 && parts.minute === 0 && parts.second === 0;
+      const direction = deltaDays >= 0 ? "past" : "future";
+
+      const days = absDays;
+      const hours = days * 24;
+      const minutes = hours * 60;
+      const seconds = minutes * 60;
+      const weeks = days / 7;
+      const years = days / 365.2425;
+      const months = years * 12;
+
+      outputs.years.textContent = formatNumber(years);
+      outputs.months.textContent = formatNumber(months);
+      outputs.weeks.textContent = formatNumber(weeks);
+      outputs.days.textContent = formatNumber(days);
+      outputs.daysMain.textContent = formatNumber(days);
+      outputs.hours.textContent = formatNumber(hours);
+      outputs.minutes.textContent = formatNumber(minutes);
+      outputs.seconds.textContent = formatNumber(seconds);
+
+      updateDisplay(parts, deltaDays);
+      midnightBtn.textContent = isMidnight ? "Set noon" : "Set midnight";
+      summaryLabel.textContent = direction === "past" ? "days since" : "days until";
+
+      if (!customHeadline && document.activeElement !== headline) {
+        headline.textContent = autoHeadline(deltaDays);
+      }
+    }
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function setParts(parts) {
+      inputs.year.value = padNumber(parts.year, fields.year.pad);
+      inputs.month.value = padNumber(parts.month, fields.month.pad);
+      inputs.day.value = padNumber(parts.day, fields.day.pad);
+      inputs.hour.value = padNumber(parts.hour, fields.hour.pad);
+      inputs.minute.value = padNumber(parts.minute, fields.minute.pad);
+      inputs.second.value = padNumber(parts.second, fields.second.pad);
+      updateOutputs();
+    }
+
+    function setRandom() {
+      const choice = milestones[Math.floor(Math.random() * milestones.length)];
+      const parsed = parseIso(choice.iso);
+      if (!parsed) return;
+      const deltaDays = diffDays(nowParts(), parsed);
+      const prefix = deltaDays >= 0 ? "time since " : "time until ";
+      const label = choice.label || choice.title || "milestone";
+      customHeadline = true;
+      headline.textContent = `${prefix}${label}`;
+      setParts(parsed);
+    }
+
+    function setNow() {
+      customHeadline = false;
+      const now = new Date();
+      setParts({
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        day: now.getDate(),
+        hour: now.getHours(),
+        minute: now.getMinutes(),
+        second: now.getSeconds()
+      });
+    }
+
+    document.getElementById("btn-random").addEventListener("click", setRandom);
+    document.getElementById("btn-now").addEventListener("click", setNow);
+    document.getElementById("btn-midnight").addEventListener("click", () => {
+      customHeadline = false;
+      const parts = normalize(false);
+      const isMidnight = parts.hour === 0 && parts.minute === 0 && parts.second === 0;
+      const hour = isMidnight ? 12 : 0;
+      setParts({
+        year: parts.year,
+        month: parts.month,
+        day: parts.day,
+        hour,
+        minute: 0,
+        second: 0
+      });
+    });
+
+    function buildShareUrl() {
+      const parts = normalize(false);
+      const iso = toIsoLocal(parts);
+      const url = new URL(window.location.href);
+      url.searchParams.set("at", iso);
+      const title = headline.textContent.trim();
+      if (customHeadline && title) {
+        url.searchParams.set("title", title);
+      } else {
+        url.searchParams.delete("title");
+      }
+      return url.toString();
+    }
+
+    copyBtn.addEventListener("click", async () => {
+      const url = buildShareUrl();
+      try {
+        await navigator.clipboard.writeText(url);
+        copyBtn.textContent = "Copied";
+        setTimeout(() => {
+          copyBtn.textContent = "Copy link";
+        }, 1400);
+      } catch (err) {
+        window.prompt("Copy link:", url);
+      }
+    });
+
+    headline.addEventListener("input", () => {
+      const text = headline.textContent.trim();
+      customHeadline = text.length > 0;
+    });
+
+    headline.addEventListener("blur", () => {
+      const text = headline.textContent.trim();
+      if (!text) {
+        customHeadline = false;
+        updateOutputs({ writeValues: false });
+      }
+    });
+
+    Object.keys(inputs).forEach((key) => {
+      const input = inputs[key];
+      input.addEventListener("input", () => {
+        customHeadline = false;
+        updateOutputs({ writeValues: false });
+        const value = String(input.value);
+        const pad = fields[key].pad;
+        const required = key === "year" && value.startsWith("-") ? pad + 1 : pad;
+        if (value.length >= required && input.selectionStart === value.length) {
+          const nextKey = fieldOrder[fieldOrder.indexOf(key) + 1];
+          if (nextKey && inputs[nextKey]) {
+            inputs[nextKey].focus();
+            inputs[nextKey].select();
+          }
+        }
+      });
+      input.addEventListener("blur", () => updateOutputs({ writeValues: true }));
+      input.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        customHeadline = false;
+        const delta = event.deltaY < 0 ? 1 : -1;
+        const current = parseField(key, input.value);
+        const next = current + delta;
+        input.value = padNumber(next, fields[key].pad);
+        updateOutputs();
+      });
+    });
+
+    document.querySelectorAll(".spin").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        customHeadline = false;
+        const field = btn.closest(".picker-field").dataset.field;
+        const delta = parseInt(btn.dataset.delta, 10) || 0;
+        const current = parseField(field, inputs[field].value);
+        inputs[field].value = padNumber(current + delta, fields[field].pad);
+        updateOutputs();
+      });
+    });
+
+    setRandom();
+    const params = new URLSearchParams(window.location.search);
+    const atParam = params.get("at");
+    const titleParam = params.get("title");
+    if (titleParam) {
+      headline.textContent = titleParam;
+      customHeadline = true;
+    }
+    if (atParam) {
+      const parsed = parseIso(atParam);
+      if (parsed) {
+        setParts(parsed);
+      }
+    }
+
+    function isAnyFieldFocused() {
+      const focused = document.activeElement;
+      return Object.values(inputs).includes(focused) || focused === headline;
+    }
+
+    setInterval(() => {
+      updateOutputs({ writeValues: !isAnyFieldFocused() });
+    }, 1000);
+  </script>
+</body>
+</html>
