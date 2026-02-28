@@ -24,62 +24,53 @@ layout: none
       box-sizing: border-box;
     }
 
-    html, body {
+    html {
       margin: 0;
       padding: 0;
       min-height: 100%;
       background: radial-gradient(circle at 20% 10%, #252a5a 0, transparent 55%),
                   radial-gradient(circle at 80% 0%, #3a2f5a 0, transparent 50%),
                   linear-gradient(140deg, var(--bg0), var(--bg1) 55%, var(--bg2));
-      color: var(--ink);
-      font-family: var(--display);
+      color: transparent;
     }
 
     body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--display);
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 2rem 1.25rem 3rem;
       overflow-x: hidden;
+      background: transparent;
     }
 
     .shell {
       width: min(980px, 100%);
       border-radius: 20px;
       padding: 1.8rem;
-      background: rgba(12, 14, 28, 0.8);
+      background: linear-gradient(136deg, rgba(12, 14, 28, 0.94), rgba(10, 12, 24, 0.94));
       border: 1px solid rgba(124, 255, 209, 0.12);
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
       position: relative;
       overflow: hidden;
+      isolation: isolate;
+      z-index: 1;
+      color: var(--ink);
     }
 
     .shell::before {
       content: "";
       position: absolute;
-      inset: -40% -20% auto -20%;
-      height: 60%;
-      background: radial-gradient(circle at 20% 10%, rgba(124, 255, 209, 0.25), transparent 55%);
-      opacity: 0.8;
+      inset: -45%;
+      background:
+        radial-gradient(circle at 10% 8%, rgba(124, 255, 209, 0.12), transparent 62%),
+        radial-gradient(circle at 92% 88%, rgba(255, 184, 77, 0.1), transparent 65%);
+      filter: blur(18px);
+      opacity: 0.75;
       pointer-events: none;
-      animation: drift 12s ease-in-out infinite;
-    }
-
-    .shell::after {
-      content: "";
-      position: absolute;
-      inset: auto -30% -45% -30%;
-      height: 65%;
-      background: radial-gradient(circle at 70% 30%, rgba(255, 184, 77, 0.18), transparent 60%);
-      opacity: 0.7;
-      pointer-events: none;
-      animation: drift 16s ease-in-out infinite reverse;
-    }
-
-    @keyframes drift {
-      0% { transform: translateY(0); }
-      50% { transform: translateY(-12px); }
-      100% { transform: translateY(0); }
+      z-index: -1;
     }
 
     header {
@@ -94,20 +85,34 @@ layout: none
     .title {
       display: flex;
       flex-direction: column;
-      gap: 0.25rem;
+      gap: 0.4rem;
     }
 
     .title h1 {
       margin: 0;
-      font-size: clamp(2rem, 4vw, 2.7rem);
-      letter-spacing: 0.08em;
-      text-transform: lowercase;
+      font-family: var(--mono);
+      font-size: clamp(1.9rem, 4vw, 2.6rem);
+      letter-spacing: 0.06em;
+      text-transform: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      width: fit-content;
+      padding: 0.15rem 0.45rem;
+      border-radius: 10px;
+      border: 1px solid rgba(124, 255, 209, 0.28);
+      background: linear-gradient(110deg, rgba(124, 255, 209, 0.1), rgba(124, 255, 209, 0.03));
     }
 
     .title span {
       font-family: var(--mono);
       color: var(--muted);
       font-size: 0.85rem;
+    }
+
+    .title .bracket {
+      color: var(--accent);
+      font-weight: 700;
     }
 
     .title-meta {
@@ -137,17 +142,19 @@ layout: none
       box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
     }
 
-    .count {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.25rem 0.6rem;
-      border-radius: 999px;
-      border: 1px solid rgba(124, 255, 209, 0.4);
-      color: var(--accent);
+    .promptline {
       font-family: var(--mono);
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
+      color: var(--muted);
+      font-size: 0.78rem;
+      letter-spacing: 0.03em;
+    }
+
+    .promptline .prompt {
+      color: var(--accent);
+    }
+
+    .promptline .path {
+      color: #8cb6ff;
     }
 
     .ambient {
@@ -205,6 +212,20 @@ layout: none
       color: var(--muted);
     }
 
+    .panel-terminal h2 {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .panel-terminal h2::before {
+      content: "$";
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.95rem;
+      transform: translateY(-1px);
+    }
+
     .exp-list {
       list-style: none;
       margin: 0;
@@ -229,7 +250,7 @@ layout: none
 
     .exp-list li a {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
       padding: 0.65rem 0.9rem;
       border-radius: 12px;
@@ -242,9 +263,11 @@ layout: none
       transition: transform 0.12s ease, box-shadow 0.12s ease;
     }
 
-    .exp-list li a span {
-      color: var(--muted);
-      font-size: 0.75rem;
+    .exp-list li a::before {
+      content: ">";
+      margin-right: 0.6rem;
+      color: var(--accent);
+      font-weight: 700;
     }
 
     .exp-list li a:hover {
@@ -258,11 +281,51 @@ layout: none
       font-size: 0.85rem;
     }
 
+    .template-data {
+      display: none;
+    }
+
     .note {
       margin: 0.4rem 0 0;
       color: var(--muted);
       font-size: 0.85rem;
       line-height: 1.5;
+    }
+
+    .socials {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+    }
+
+    .socials a {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.3rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid rgba(124, 255, 209, 0.3);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.73rem;
+      letter-spacing: 0.08em;
+      text-decoration: none;
+      text-transform: uppercase;
+      background: rgba(124, 255, 209, 0.06);
+      transition: transform 0.12s ease, border-color 0.12s ease;
+    }
+
+    .socials a:hover {
+      transform: translateY(-1px);
+      border-color: rgba(124, 255, 209, 0.55);
+    }
+
+    .socials a.muted {
+      color: rgba(154, 163, 201, 0.75);
+      border-color: rgba(154, 163, 201, 0.28);
+      background: rgba(154, 163, 201, 0.06);
+      pointer-events: none;
+      transform: none;
     }
 
     .secret {
@@ -279,7 +342,7 @@ layout: none
 
     body.lab-mode .shell {
       box-shadow:
-        0 24px 60px rgba(0, 0, 0, 0.55),
+        0 14px 34px rgba(0, 0, 0, 0.45),
         0 0 45px rgba(124, 255, 209, 0.2);
     }
 
@@ -290,56 +353,58 @@ layout: none
   </style>
 </head>
 <body>
-{% assign experiments = site.static_files
-  | where_exp: "file", "file.path contains '/experiments/'"
-  | where_exp: "file", "file.extname == '.html'"
-  | sort: "path" %}
 <div class="ambient" aria-hidden="true"></div>
 <div class="cursor-glow" aria-hidden="true"></div>
 <main class="shell">
   <header>
     <div class="title">
-      <h1>lucsch</h1>
+      <h1><span class="bracket">[</span>lucsch<span class="bracket">]</span></h1>
       <div class="title-meta">
         <span>personal lab for small tools, sketches, and prototypes</span>
-        <span class="count">{{ experiments.size }} items</span>
       </div>
+      <div class="promptline"><span class="prompt">lucsch@lab</span>:<span class="path">~/contents</span>$ ls -1</div>
     </div>
     <div class="badge" id="lab-badge">personal lab</div>
   </header>
 
   <section class="grid">
-    <section class="panel">
-      <h2>experiments</h2>
-      <ul class="exp-list">
-        {% if experiments.size == 0 %}
-          <li class="exp-empty">no experiments yet</li>
-        {% else %}
-          {% for file in experiments %}
-            {% assign label = file.name | remove: file.extname | replace: '-', ' ' | replace: '_', ' ' %}
-            <li style="--i: {{ forloop.index0 }}">
-              <a href="{{ file.path }}">
-                <strong>{{ label }}</strong>
-                <span>{{ file.name }}</span>
-              </a>
-            </li>
-          {% endfor %}
-        {% endif %}
-      </ul>
+    <section class="panel panel-terminal">
+      <h2>contents</h2>
+      <ul class="exp-list" id="exp-list"></ul>
     </section>
 
     <aside class="panel">
       <h2>about</h2>
       <p class="note">a personal lab for practical utilities and visual sketches.</p>
       <p class="note">clean, fast, and a little experimental.</p>
+      <div class="socials">
+        <a href="https://discord.com/users/240742838202138624" target="_blank" rel="noreferrer">discord @k4d4</a>
+        <a class="muted" aria-disabled="true">github</a>
+        <a href="https://www.linkedin.com/in/lucas-schaffer-a792b7182" target="_blank" rel="noreferrer">linkedin</a>
+      </div>
       <p class="note secret">signal: lab mode engaged.</p>
     </aside>
   </section>
 </main>
+<script id="exp-template" type="application/json" class="template-data">
+[
+{% assign experiments = site.static_files
+  | where_exp: "file", "file.path contains '/experiments/'"
+  | where_exp: "file", "file.extname == '.html'"
+  | sort: "path" %}
+{% for file in experiments %}
+  {
+    "path": "{{ file.path | escape }}",
+    "name": "{{ file.name | remove: file.extname | escape }}"
+  }{% unless forloop.last %},{% endunless %}
+{% endfor %}
+]
+</script>
 <script>
   const glow = document.querySelector(".cursor-glow");
   const badge = document.getElementById("lab-badge");
   const ambient = document.querySelector(".ambient");
+  const expList = document.getElementById("exp-list");
   let keyBuffer = "";
 
   window.addEventListener("mousemove", (event) => {
@@ -423,6 +488,55 @@ layout: none
     spots.push(createSpot());
   }
 
+  function fallbackExperiments() {
+    return [
+      { path: "./experiments/time_since.html", name: "time_since" },
+      { path: "./experiments/solar_visualization.html", name: "solar_visualization" }
+    ];
+  }
+
+  function readExperiments() {
+    const template = document.getElementById("exp-template");
+    if (!template) return fallbackExperiments();
+    try {
+      const parsed = JSON.parse(template.textContent);
+      if (!Array.isArray(parsed)) return fallbackExperiments();
+      return parsed;
+    } catch (error) {
+      return fallbackExperiments();
+    }
+  }
+
+  function renderExperiments() {
+    const items = readExperiments().slice().sort((a, b) => {
+      const nameA = (a.name || "").replace(/\.html?$/i, "").toLowerCase();
+      const nameB = (b.name || "").replace(/\.html?$/i, "").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+    expList.innerHTML = "";
+    if (items.length === 0) {
+      const li = document.createElement("li");
+      li.className = "exp-empty";
+      li.textContent = "no experiments yet";
+      expList.appendChild(li);
+      return;
+    }
+
+    items.forEach((item, index) => {
+      const li = document.createElement("li");
+      li.style.setProperty("--i", String(index));
+      const a = document.createElement("a");
+      a.href = item.path;
+      const strong = document.createElement("strong");
+      const rawName = item.name || "";
+      const nameOnly = rawName.replace(/\.html?$/i, "");
+      strong.textContent = nameOnly;
+      a.appendChild(strong);
+      li.appendChild(a);
+      expList.appendChild(li);
+    });
+  }
+
   function animateSpots(time) {
     const t = time / 1000;
     const width = window.innerWidth;
@@ -451,6 +565,7 @@ layout: none
   }
 
   requestAnimationFrame(animateSpots);
+  renderExperiments();
 </script>
 </body>
 </html>

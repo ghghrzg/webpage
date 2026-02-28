@@ -6,12 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
-      --bg0: #070911;
-      --bg1: #101428;
+      --bg0: #0b0d1a;
+      --bg1: #14162b;
       --bg2: #1d1f3a;
       --ink: #f7f8ff;
       --muted: #9aa5c7;
-      --accent: #7cf6ff;
+      --accent: #7cffd1;
       --accent2: #ff7ad9;
       --accent3: #ffd166;
       --mono: "Fira Code", "Cascadia Code", "Menlo", "Consolas", monospace;
@@ -26,8 +26,8 @@
       margin: 0;
       padding: 0;
       min-height: 100%;
-      background: radial-gradient(circle at 10% 15%, rgba(124, 246, 255, 0.2), transparent 55%),
-                  radial-gradient(circle at 85% 10%, rgba(255, 122, 217, 0.18), transparent 60%),
+      background: radial-gradient(circle at 20% 10%, #252a5a 0, transparent 55%),
+                  radial-gradient(circle at 80% 0%, #3a2f5a 0, transparent 50%),
                   linear-gradient(140deg, var(--bg0), var(--bg1) 55%, var(--bg2));
       color: var(--ink);
       font-family: var(--display);
@@ -37,22 +37,44 @@
       padding: 2.5rem 1.5rem 3.5rem;
       display: flex;
       justify-content: center;
+      overflow-x: hidden;
     }
 
-    .grain {
+    .ambient {
       position: fixed;
       inset: 0;
       pointer-events: none;
-      background-image:
-        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.04) 1px, transparent 1px, transparent 3px),
-        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 4px);
+      z-index: 0;
+    }
+
+    .ambient span {
+      position: absolute;
+      border-radius: 999px;
+      opacity: 0.36;
+      will-change: transform, opacity;
+    }
+
+    .cursor-glow {
+      position: fixed;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(124, 255, 209, 0.08), transparent 70%);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      z-index: 0;
+    }
+
+    body.moused .cursor-glow {
       opacity: 0.35;
-      z-index: -1;
     }
 
     .wrap {
       width: min(1100px, 100%);
       position: relative;
+      z-index: 1;
     }
 
     .home {
@@ -317,11 +339,13 @@
     }
 
     .direction {
+      position: relative;
+      z-index: 1;
       display: inline-flex;
       align-items: center;
       gap: 0.4rem;
       font-family: var(--mono);
-      font-size: 0.75rem;
+      font-size: 0.92rem;
       letter-spacing: 0.16em;
       text-transform: uppercase;
       color: var(--muted);
@@ -332,17 +356,43 @@
     }
 
     .summary {
+      position: relative;
+      overflow: hidden;
       display: grid;
       gap: 0.6rem;
       margin-bottom: 0.9rem;
-      padding: 0.75rem 0.9rem;
+      padding: 1rem 1rem 0.95rem;
       border-radius: 14px;
-      background: rgba(18, 22, 44, 0.8);
-      border: 1px solid rgba(124, 246, 255, 0.14);
+      background: linear-gradient(135deg, rgba(124, 255, 209, 0.14), rgba(18, 22, 44, 0.88) 60%);
+      border: 1px solid rgba(124, 255, 209, 0.28);
+      box-shadow: inset 0 0 0 1px rgba(124, 255, 209, 0.08);
       font-family: var(--mono);
+      animation: summaryBreathe 6.5s ease-in-out infinite;
+    }
+
+    .summary::before {
+      content: "";
+      position: absolute;
+      inset: -35% -25%;
+      background: radial-gradient(circle at 15% 50%, rgba(124, 255, 209, 0.2), transparent 55%);
+      opacity: 0.45;
+      pointer-events: none;
+      animation: summarySweep 9s ease-in-out infinite;
+    }
+
+    @keyframes summaryBreathe {
+      0%, 100% { border-color: rgba(124, 255, 209, 0.22); }
+      50% { border-color: rgba(124, 255, 209, 0.38); }
+    }
+
+    @keyframes summarySweep {
+      0%, 100% { transform: translateX(-7%) translateY(0); opacity: 0.32; }
+      50% { transform: translateX(8%) translateY(-2%); opacity: 0.55; }
     }
 
     .summary-main {
+      position: relative;
+      z-index: 1;
       display: flex;
       align-items: baseline;
       justify-content: space-between;
@@ -350,13 +400,15 @@
     }
 
     .summary-value {
-      font-size: 1.4rem;
+      font-size: clamp(2rem, 4vw, 2.6rem);
+      line-height: 1;
       letter-spacing: 0.08em;
       color: var(--accent3);
+      text-shadow: 0 0 20px rgba(255, 209, 102, 0.18);
     }
 
     .summary-label {
-      font-size: 0.75rem;
+      font-size: 0.88rem;
       letter-spacing: 0.16em;
       text-transform: uppercase;
       color: var(--muted);
@@ -371,7 +423,8 @@
   </style>
 </head>
 <body>
-  <div class="grain" aria-hidden="true"></div>
+  <div class="ambient" aria-hidden="true"></div>
+  <div class="cursor-glow" aria-hidden="true"></div>
   <main class="wrap">
     <a class="home" href="../">Home</a>
     <header>
@@ -475,6 +528,16 @@
   </main>
 
   <script>
+    const glow = document.querySelector(".cursor-glow");
+    const ambient = document.querySelector(".ambient");
+
+    window.addEventListener("mousemove", (event) => {
+      document.body.classList.add("moused");
+      if (!glow) return;
+      glow.style.left = `${event.clientX}px`;
+      glow.style.top = `${event.clientY}px`;
+    });
+
     const minYear = -10000;
     const maxYear = 5000000000;
 
@@ -576,7 +639,7 @@
       { id: "sun_explodes", label: "Sun red giant (~)", iso: "+5000000000-01-01" }
     ];
 
-    let customHeadline = false;
+    let headlineSource = "auto"; // auto | manual | preset
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
@@ -633,6 +696,30 @@
       return value.toLocaleString("en-GB", { maximumFractionDigits: 3 });
     }
 
+    function formatSummaryDays(value) {
+      if (value >= 99000) {
+        const scaled = value / 1000;
+        let decimals = 2;
+        if (scaled >= 100) decimals = 1;
+        if (scaled >= 1000) decimals = 0;
+        return `${scaled.toLocaleString("en-GB", {
+          useGrouping: false,
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        })}k`;
+      }
+      if (value >= 10000) {
+        return value.toLocaleString("en-GB", { maximumFractionDigits: 0 });
+      }
+      if (value >= 1000) {
+        return value.toLocaleString("en-GB", {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1
+        });
+      }
+      return value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+    }
+
     function updateDisplay(parts, deltaDays) {
       const yearAbs = Math.abs(parts.year);
       const dateStr = `${padNumber(parts.day, 2)}.${padNumber(parts.month, 2)}.${padNumber(yearAbs, 4)}`;
@@ -649,6 +736,12 @@
 
     function autoHeadline(deltaDays) {
       return deltaDays >= 0 ? "time since x" : "time until x";
+    }
+
+    function maybeResetPresetHeadline() {
+      if (headlineSource === "preset") {
+        headlineSource = "auto";
+      }
     }
 
     function formatYearIso(year) {
@@ -756,7 +849,7 @@
       outputs.months.textContent = formatNumber(months);
       outputs.weeks.textContent = formatNumber(weeks);
       outputs.days.textContent = formatNumber(days);
-      outputs.daysMain.textContent = formatNumber(days);
+      outputs.daysMain.textContent = formatSummaryDays(days);
       outputs.hours.textContent = formatNumber(hours);
       outputs.minutes.textContent = formatNumber(minutes);
       outputs.seconds.textContent = formatNumber(seconds);
@@ -765,7 +858,7 @@
       midnightBtn.textContent = isMidnight ? "Set noon" : "Set midnight";
       summaryLabel.textContent = direction === "past" ? "days since" : "days until";
 
-      if (!customHeadline && document.activeElement !== headline) {
+      if (headlineSource === "auto" && document.activeElement !== headline) {
         headline.textContent = autoHeadline(deltaDays);
       }
     }
@@ -791,13 +884,12 @@
       const deltaDays = diffDays(nowParts(), parsed);
       const prefix = deltaDays >= 0 ? "time since " : "time until ";
       const label = choice.label || choice.title || "milestone";
-      customHeadline = true;
+      headlineSource = "preset";
       headline.textContent = `${prefix}${label}`;
       setParts(parsed);
     }
 
     function setNow() {
-      customHeadline = false;
       const now = new Date();
       setParts({
         year: now.getFullYear(),
@@ -807,12 +899,14 @@
         minute: now.getMinutes(),
         second: now.getSeconds()
       });
+      headlineSource = "preset";
+      headline.textContent = "time since now";
     }
 
     document.getElementById("btn-random").addEventListener("click", setRandom);
     document.getElementById("btn-now").addEventListener("click", setNow);
     document.getElementById("btn-midnight").addEventListener("click", () => {
-      customHeadline = false;
+      maybeResetPresetHeadline();
       const parts = normalize(false);
       const isMidnight = parts.hour === 0 && parts.minute === 0 && parts.second === 0;
       const hour = isMidnight ? 12 : 0;
@@ -832,7 +926,7 @@
       const url = new URL(window.location.href);
       url.searchParams.set("at", iso);
       const title = headline.textContent.trim();
-      if (customHeadline && title) {
+      if (headlineSource !== "auto" && title) {
         url.searchParams.set("title", title);
       } else {
         url.searchParams.delete("title");
@@ -855,13 +949,13 @@
 
     headline.addEventListener("input", () => {
       const text = headline.textContent.trim();
-      customHeadline = text.length > 0;
+      headlineSource = text.length > 0 ? "manual" : "auto";
     });
 
     headline.addEventListener("blur", () => {
       const text = headline.textContent.trim();
       if (!text) {
-        customHeadline = false;
+        headlineSource = "auto";
         updateOutputs({ writeValues: false });
       }
     });
@@ -869,7 +963,7 @@
     Object.keys(inputs).forEach((key) => {
       const input = inputs[key];
       input.addEventListener("input", () => {
-        customHeadline = false;
+        maybeResetPresetHeadline();
         updateOutputs({ writeValues: false });
         const value = String(input.value);
         const pad = fields[key].pad;
@@ -885,7 +979,7 @@
       input.addEventListener("blur", () => updateOutputs({ writeValues: true }));
       input.addEventListener("wheel", (event) => {
         event.preventDefault();
-        customHeadline = false;
+        maybeResetPresetHeadline();
         const delta = event.deltaY < 0 ? 1 : -1;
         const current = parseField(key, input.value);
         const next = current + delta;
@@ -896,7 +990,7 @@
 
     document.querySelectorAll(".spin").forEach((btn) => {
       btn.addEventListener("click", () => {
-        customHeadline = false;
+        maybeResetPresetHeadline();
         const field = btn.closest(".picker-field").dataset.field;
         const delta = parseInt(btn.dataset.delta, 10) || 0;
         const current = parseField(field, inputs[field].value);
@@ -905,13 +999,97 @@
       });
     });
 
+    function rand(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    const spots = [];
+    const spotCount = 10;
+    const colors = [
+      "rgba(124, 255, 209, 0.2)",
+      "rgba(255, 184, 77, 0.2)",
+      "rgba(120, 166, 255, 0.18)",
+      "rgba(255, 122, 217, 0.17)"
+    ];
+
+    function createSpot() {
+      const el = document.createElement("span");
+      const size = rand(70, 180);
+      const color = colors[Math.floor(rand(0, colors.length))];
+      el.style.width = `${size}px`;
+      el.style.height = `${size}px`;
+      el.style.background = `radial-gradient(circle, ${color}, transparent 70%)`;
+      ambient.appendChild(el);
+
+      return {
+        el,
+        size,
+        xCenter: rand(0.12, 0.88),
+        xAmp: rand(0.08, 0.28),
+        yBase: rand(0.1, 0.9),
+        curve: rand(-0.32, 0.32),
+        speed: rand(0.022, 0.055),
+        phase: rand(0, 1),
+        driftAmpX: rand(0.01, 0.05),
+        driftAmpY: rand(0.01, 0.05),
+        driftFreqX: rand(0.03, 0.08),
+        driftFreqY: rand(0.02, 0.07),
+        driftPhaseX: rand(0, Math.PI * 2),
+        driftPhaseY: rand(0, Math.PI * 2),
+        wobbleAmpX: rand(0.008, 0.03),
+        wobbleAmpY: rand(0.008, 0.03),
+        wobbleFreqX: rand(0.15, 0.6),
+        wobbleFreqY: rand(0.12, 0.55),
+        wobblePhaseX: rand(0, Math.PI * 2),
+        wobblePhaseY: rand(0, Math.PI * 2),
+        shimmerSpeed: rand(0.2, 0.6),
+        shimmerPhase: rand(0, Math.PI * 2),
+        opacityBase: rand(0.22, 0.48),
+        opacityAmp: rand(0.1, 0.22)
+      };
+    }
+
+    function animateSpots(time) {
+      const t = time / 1000;
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      spots.forEach((spot) => {
+        const theta = (t * spot.speed + spot.phase) * Math.PI * 2;
+        const progress = 0.5 - 0.5 * Math.cos(theta);
+        const wobbleX = spot.wobbleAmpX * Math.sin(t * spot.wobbleFreqX + spot.wobblePhaseX);
+        const wobbleY = spot.wobbleAmpY * Math.sin(t * spot.wobbleFreqY + spot.wobblePhaseY);
+        const driftX = spot.driftAmpX * Math.sin(t * spot.driftFreqX + spot.driftPhaseX);
+        const driftY = spot.driftAmpY * Math.sin(t * spot.driftFreqY + spot.driftPhaseY);
+        const x = spot.xCenter + spot.xAmp * Math.sin(theta) + wobbleX + driftX;
+        const parabola = (progress - 0.5) ** 2 * 4;
+        const y = clamp(spot.yBase + spot.curve * parabola + wobbleY + driftY, 0.05, 0.95);
+
+        const px = x * width;
+        const py = y * height;
+        spot.el.style.transform = `translate(${px - spot.size / 2}px, ${py - spot.size / 2}px)`;
+
+        const shimmer = spot.opacityBase + spot.opacityAmp * Math.sin(t * spot.shimmerSpeed + spot.shimmerPhase);
+        spot.el.style.opacity = clamp(shimmer, 0.14, 0.68);
+      });
+
+      requestAnimationFrame(animateSpots);
+    }
+
+    if (ambient) {
+      for (let i = 0; i < spotCount; i += 1) {
+        spots.push(createSpot());
+      }
+      requestAnimationFrame(animateSpots);
+    }
+
     setRandom();
     const params = new URLSearchParams(window.location.search);
     const atParam = params.get("at");
     const titleParam = params.get("title");
     if (titleParam) {
       headline.textContent = titleParam;
-      customHeadline = true;
+      headlineSource = "preset";
     }
     if (atParam) {
       const parsed = parseIso(atParam);
