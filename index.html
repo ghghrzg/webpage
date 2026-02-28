@@ -102,17 +102,96 @@ layout: none
       border-radius: 10px;
       border: 1px solid rgba(124, 255, 209, 0.28);
       background: linear-gradient(110deg, rgba(124, 255, 209, 0.1), rgba(124, 255, 209, 0.03));
+      position: relative;
+      user-select: none;
     }
 
-    .title span {
+    #logo-trigger {
+      cursor: pointer;
+      transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+    }
+
+    #logo-trigger:hover,
+    #logo-trigger:focus-visible {
+      transform: translateY(-1px);
+      border-color: rgba(124, 255, 209, 0.58);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+      outline: none;
+    }
+
+    #logo-trigger::after {
+      content: "";
+      position: absolute;
+      left: calc(100% + 0.48rem);
+      top: 50%;
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 999px;
+      border: 1px solid rgba(124, 255, 209, 0.78);
+      background: radial-gradient(circle at 34% 30%, rgba(180, 255, 229, 0.95), rgba(124, 255, 209, 0.24) 70%);
+      box-shadow: 0 0 0 0 rgba(124, 255, 209, 0.5);
+      opacity: 0;
+      transform: translateY(-50%) translateX(-3px) scale(0.85);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      pointer-events: none;
+    }
+
+    #logo-trigger:hover::after,
+    #logo-trigger:focus-visible::after {
+      opacity: 0.95;
+      transform: translateY(-50%) translateX(0) scale(1);
+      animation: logo-hint-pulse 1.35s ease-in-out infinite;
+    }
+
+    @keyframes logo-hint-pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(124, 255, 209, 0.5);
+      }
+      72% {
+        box-shadow: 0 0 0 7px rgba(124, 255, 209, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(124, 255, 209, 0);
+      }
+    }
+
+    .logo-flyer {
+      position: fixed;
+      margin: 0;
+      font-family: var(--mono);
+      font-size: clamp(1.9rem, 4vw, 2.6rem);
+      letter-spacing: 0.06em;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 10px;
+      border: 1px solid rgba(124, 255, 209, 0.5);
+      background: linear-gradient(110deg, rgba(124, 255, 209, 0.14), rgba(124, 255, 209, 0.06));
+      color: var(--ink);
+      pointer-events: none;
+      z-index: 20;
+      will-change: transform;
+      transform-origin: center center;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+      white-space: nowrap;
+    }
+
+    #logo-trigger .bracket,
+    .logo-flyer .bracket {
+      color: var(--accent);
+      font-size: 0.84em;
+      line-height: 1;
+      font-weight: 700;
+      display: inline-block;
+      transform: translateY(-0.02em);
+      flex: 0 0 auto;
+    }
+
+    .title-meta span {
       font-family: var(--mono);
       color: var(--muted);
       font-size: 0.85rem;
-    }
-
-    .title .bracket {
-      color: var(--accent);
-      font-weight: 700;
     }
 
     .title-meta {
@@ -358,7 +437,7 @@ layout: none
 <main class="shell">
   <header>
     <div class="title">
-      <h1><span class="bracket">[</span>lucsch<span class="bracket">]</span></h1>
+      <h1 id="logo-trigger" tabindex="0" aria-label="lucsch logo easter egg"><span class="bracket">[</span>lucsch<span class="bracket">]</span></h1>
       <div class="title-meta">
         <span>personal lab for small tools, sketches, and prototypes</span>
       </div>
@@ -379,7 +458,7 @@ layout: none
       <p class="note">clean, fast, and a little experimental.</p>
       <div class="socials">
         <a href="https://discord.com/users/240742838202138624" target="_blank" rel="noreferrer">discord @k4d4</a>
-        <a class="muted" aria-disabled="true">github</a>
+        <a href="https://steamcommunity.com/id/ghghrzg/" target="_blank" rel="noreferrer">steam</a>
         <a href="https://www.linkedin.com/in/lucas-schaffer-a792b7182" target="_blank" rel="noreferrer">linkedin</a>
       </div>
       <p class="note secret">signal: lab mode engaged.</p>
@@ -405,7 +484,14 @@ layout: none
   const badge = document.getElementById("lab-badge");
   const ambient = document.querySelector(".ambient");
   const expList = document.getElementById("exp-list");
+  const shell = document.querySelector(".shell");
+  const logoTrigger = document.getElementById("logo-trigger");
   let keyBuffer = "";
+  let logoBusy = false;
+  let logoAutoTimer = null;
+  let logoAutoDueAt = 0;
+  const LOGO_AUTO_MAX_DELAY_MS = 30 * 60 * 1000;
+  const LOGO_AUTO_RETRY_MS = 1000;
 
   window.addEventListener("mousemove", (event) => {
     document.body.classList.add("moused");
@@ -435,6 +521,116 @@ layout: none
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function formatLocalTimestamp(timestamp) {
+    return new Date(timestamp).toLocaleString([], {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+  }
+
+  async function runAutoHopWhenReady() {
+    if (document.hidden || logoBusy) {
+      logoAutoTimer = window.setTimeout(runAutoHopWhenReady, LOGO_AUTO_RETRY_MS);
+      return;
+    }
+    await logoHop();
+    scheduleLogoHop();
+  }
+
+  function scheduleLogoHop() {
+    if (!logoTrigger) return;
+    if (logoAutoTimer) window.clearTimeout(logoAutoTimer);
+    const delay = Math.round(rand(0, LOGO_AUTO_MAX_DELAY_MS));
+    logoAutoDueAt = Date.now() + delay;
+    console.info(`[logo] next auto hop at ${formatLocalTimestamp(logoAutoDueAt)} local (${logoAutoDueAt})`);
+    logoAutoTimer = window.setTimeout(runAutoHopWhenReady, delay);
+  }
+
+  async function logoHop() {
+    if (!logoTrigger || logoBusy) return;
+    logoBusy = true;
+
+    const rect = logoTrigger.getBoundingClientRect();
+    const flyer = logoTrigger.cloneNode(true);
+    flyer.removeAttribute("id");
+    flyer.removeAttribute("tabindex");
+    flyer.removeAttribute("aria-label");
+    flyer.classList.add("logo-flyer");
+    flyer.style.left = `${rect.left}px`;
+    flyer.style.top = `${rect.top}px`;
+    document.body.appendChild(flyer);
+    logoTrigger.style.visibility = "hidden";
+
+    const shellRect = shell ? shell.getBoundingClientRect() : rect;
+    const drift = rand(-30, 30);
+    const offscreenY = window.innerHeight + 140;
+    const toBottom = offscreenY - rect.top;
+    const fullPeakY = Math.min(-235, shellRect.top - rect.top - rect.height - 34);
+    const basePeakY = fullPeakY * 0.5;
+    const peakOffsetY = clamp(rand(-12, 12), -7, 7);
+    const peakY = clamp(basePeakY + peakOffsetY, -136, -98);
+    const peakOffsetX = clamp(rand(-34, 34), -38, 38);
+    const peakRotate = clamp(rand(-12.5, -2.4), -13, -2);
+    const peakX = drift + peakOffsetX;
+    const liftDuration = rand(620, 840);
+    const fallDuration = rand(640, 780);
+    const returnDuration = rand(760, 900);
+
+    try {
+      await flyer.animate(
+        [
+          { transform: "translate(0, 0) rotate(0deg)" },
+          { offset: 0.16, transform: `translate(${peakX * 0.08}px, ${peakY * 0.08}px) rotate(${peakRotate * 0.1}deg)` },
+          { offset: 0.5, transform: `translate(${peakX * 0.46}px, ${peakY * 0.46}px) rotate(${peakRotate * 0.46}deg)` },
+          { offset: 0.82, transform: `translate(${peakX * 0.82}px, ${peakY * 0.82}px) rotate(${peakRotate * 0.82}deg)` },
+          { transform: `translate(${peakX}px, ${peakY}px) rotate(${peakRotate}deg)` }
+        ],
+        { duration: liftDuration, easing: "linear", fill: "forwards" }
+      ).finished;
+
+      flyer.style.zIndex = "0";
+      await flyer.animate(
+        [
+          { transform: `translate(${peakX}px, ${peakY}px) rotate(${peakRotate}deg)` },
+          { offset: 0.08, transform: `translate(${peakX * 1.02}px, ${peakY + toBottom * 0.23}px) rotate(6.4deg)` },
+          { transform: `translate(${drift * 1.2}px, ${toBottom}px) rotate(21deg)` }
+        ],
+        { duration: fallDuration, easing: "cubic-bezier(0.66, 0.01, 0.95, 0.38)", fill: "forwards" }
+      ).finished;
+
+      await sleep(1500);
+      flyer.style.zIndex = "20";
+      await flyer.animate(
+        [
+          { transform: `translate(${drift * 1.2}px, ${toBottom}px) rotate(21deg)` },
+          { transform: `translate(${drift * 0.28}px, -28px) rotate(-8deg)` }
+        ],
+        { duration: returnDuration, easing: "cubic-bezier(0.17, 0.82, 0.22, 1)", fill: "forwards" }
+      ).finished;
+
+      await flyer.animate(
+        [
+          { transform: `translate(${drift * 0.28}px, -28px) rotate(-8deg)` },
+          { transform: "translate(0, 0) rotate(0deg)" }
+        ],
+        { duration: 260, easing: "cubic-bezier(0.25, 0.9, 0.3, 1)", fill: "forwards" }
+      ).finished;
+    } finally {
+      flyer.remove();
+      logoTrigger.style.visibility = "visible";
+      logoBusy = false;
+    }
   }
 
   const spots = [];
@@ -566,6 +762,17 @@ layout: none
 
   requestAnimationFrame(animateSpots);
   renderExperiments();
+
+  if (logoTrigger) {
+    logoTrigger.addEventListener("click", logoHop);
+    logoTrigger.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        logoHop();
+      }
+    });
+    scheduleLogoHop();
+  }
 </script>
 </body>
 </html>
