@@ -897,10 +897,16 @@ const App: React.FC = () => {
       .slice(0, 3);
   }, [runHistory]);
 
-  const arcadeLatestRuns = getLatestRunsForMode('Arcade');
-  const arcadeBestRuns = getBestRunsForMode('Arcade');
-  const proLatestRuns = getLatestRunsForMode('Pro');
-  const proBestRuns = getBestRunsForMode('Pro');
+  const fillToThree = useCallback((runs: RunHistoryItem[]) => {
+    const filled: Array<RunHistoryItem | null> = [...runs.slice(0, 3)];
+    while (filled.length < 3) filled.push(null);
+    return filled;
+  }, []);
+
+  const arcadeLatestRuns = fillToThree(getLatestRunsForMode('Arcade'));
+  const arcadeBestRuns = fillToThree(getBestRunsForMode('Arcade'));
+  const proLatestRuns = fillToThree(getLatestRunsForMode('Pro'));
+  const proBestRuns = fillToThree(getBestRunsForMode('Pro'));
   const proQueueIconSize = Math.max(32, Math.round(targetSizePx * PRO_QUEUE_ICON_SCALE));
 
   const toggleSound = () => {
@@ -1036,18 +1042,14 @@ const App: React.FC = () => {
                       <History className="w-4 h-4 text-blue-500" />
                       Last 3
                     </div>
-                    {arcadeLatestRuns.length === 0 ? (
-                      <div className="text-xs text-gray-400 italic">No Arcade runs yet</div>
-                    ) : (
-                      <ul className="space-y-1.5">
-                        {arcadeLatestRuns.map((run, idx) => (
-                          <li key={run.id} className="flex items-center justify-between text-xs bg-white rounded-md border border-gray-300 px-2 py-1.5">
-                            <span className="font-bold">{idx + 1}. {run.score} pts</span>
-                            <span className="text-[11px] text-gray-500 tabular-nums">{formatRunDateTime(run.timestamp)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <ul className="space-y-1.5">
+                      {arcadeLatestRuns.map((run, idx) => (
+                        <li key={run?.id || `arcade-latest-placeholder-${idx}`} className="flex items-center justify-between text-xs bg-white rounded-md border border-gray-300 px-2 py-1.5">
+                          <span className="font-bold">{idx + 1}. {run ? `${run.score} pts` : '---'}</span>
+                          <span className="text-[11px] text-gray-500 tabular-nums">{run ? formatRunDateTime(run.timestamp) : '---'}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
 
                   <div className="bg-gray-100 rounded-xl border-2 border-black p-3">
@@ -1055,21 +1057,17 @@ const App: React.FC = () => {
                       <Trophy className="w-4 h-4 text-yellow-500" />
                       Best 3
                     </div>
-                    {arcadeBestRuns.length === 0 ? (
-                      <div className="text-xs text-gray-400 italic">No Arcade scores yet</div>
-                    ) : (
-                      <ul className="space-y-1.5">
-                        {arcadeBestRuns.map((run, idx) => (
-                          <li key={run.id} className="flex items-center justify-between text-xs bg-white rounded-md border border-gray-300 px-2 py-1.5">
-                            <span className="font-bold">{idx + 1}. {run.score} pts</span>
-                            <div className="text-right leading-tight">
-                              <span className="block text-[11px] text-purple-600 font-bold">x{run.maxMultiplier.toFixed(1)}</span>
-                              <span className="block text-[10px] text-gray-500 tabular-nums">{formatRunDateTime(run.timestamp)}</span>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <ul className="space-y-1.5">
+                      {arcadeBestRuns.map((run, idx) => (
+                        <li key={run?.id || `arcade-best-placeholder-${idx}`} className="flex items-center justify-between text-xs bg-white rounded-md border border-gray-300 px-2 py-1.5">
+                          <span className="font-bold">{idx + 1}. {run ? `${run.score} pts` : '---'}</span>
+                          <div className="text-right leading-tight">
+                            <span className="block text-[11px] text-purple-600 font-bold">{run ? `x${run.maxMultiplier.toFixed(1)}` : '---'}</span>
+                            <span className="block text-[10px] text-gray-500 tabular-nums">{run ? formatRunDateTime(run.timestamp) : '---'}</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               </div>
@@ -1117,18 +1115,14 @@ const App: React.FC = () => {
                       <History className="w-4 h-4 text-blue-500" />
                       Last 3
                     </div>
-                    {proLatestRuns.length === 0 ? (
-                      <div className="text-xs text-gray-400 italic">No Pro runs yet</div>
-                    ) : (
-                      <ul className="space-y-1.5">
-                        {proLatestRuns.map((run, idx) => (
-                          <li key={run.id} className="flex items-center justify-between text-xs bg-white rounded-md border border-gray-300 px-2 py-1.5">
-                            <span className="font-bold">{idx + 1}. {run.score} pts</span>
-                            <span className="text-[11px] text-gray-500 tabular-nums">{formatRunDateTime(run.timestamp)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <ul className="space-y-1.5">
+                      {proLatestRuns.map((run, idx) => (
+                        <li key={run?.id || `pro-latest-placeholder-${idx}`} className="flex items-center justify-between text-xs bg-white rounded-md border border-gray-300 px-2 py-1.5">
+                          <span className="font-bold">{idx + 1}. {run ? `${run.score} pts` : '---'}</span>
+                          <span className="text-[11px] text-gray-500 tabular-nums">{run ? formatRunDateTime(run.timestamp) : '---'}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
 
                   <div className="bg-gray-100 rounded-xl border-2 border-black p-3">
@@ -1136,21 +1130,17 @@ const App: React.FC = () => {
                       <Trophy className="w-4 h-4 text-yellow-500" />
                       Best 3
                     </div>
-                    {proBestRuns.length === 0 ? (
-                      <div className="text-xs text-gray-400 italic">No Pro scores yet</div>
-                    ) : (
-                      <ul className="space-y-1.5">
-                        {proBestRuns.map((run, idx) => (
-                          <li key={run.id} className="flex items-center justify-between text-xs bg-white rounded-md border border-gray-300 px-2 py-1.5">
-                            <span className="font-bold">{idx + 1}. {run.score} pts</span>
-                            <div className="text-right leading-tight">
-                              <span className="block text-[11px] text-purple-600 font-bold">x{run.maxMultiplier.toFixed(1)}</span>
-                              <span className="block text-[10px] text-gray-500 tabular-nums">{formatRunDateTime(run.timestamp)}</span>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <ul className="space-y-1.5">
+                      {proBestRuns.map((run, idx) => (
+                        <li key={run?.id || `pro-best-placeholder-${idx}`} className="flex items-center justify-between text-xs bg-white rounded-md border border-gray-300 px-2 py-1.5">
+                          <span className="font-bold">{idx + 1}. {run ? `${run.score} pts` : '---'}</span>
+                          <div className="text-right leading-tight">
+                            <span className="block text-[11px] text-purple-600 font-bold">{run ? `x${run.maxMultiplier.toFixed(1)}` : '---'}</span>
+                            <span className="block text-[10px] text-gray-500 tabular-nums">{run ? formatRunDateTime(run.timestamp) : '---'}</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               </div>
