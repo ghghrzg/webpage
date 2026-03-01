@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pop-a-Lot Arcade</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Fredoka', sans-serif;
+        overflow: hidden; /* Prevent scrolling during frantic clicking */
+        background-color: #FDE047; /* Default bright yellow */
+      }
+      
+      /* 
+         Replaced -webkit-text-stroke with layered text-shadows.
+         This creates a "simulated stroke" that sits purely on the outside,
+         preventing the black lines from cutting into the white text (the 'lines inside' issue).
+      */
+      
+      .text-stroke-sm {
+        text-shadow: 
+          -1px -1px 0 #000, 
+           1px -1px 0 #000, 
+          -1px  1px 0 #000, 
+           1px  1px 0 #000;
+      }
+
+      .text-stroke {
+        text-shadow: 
+          -2px -2px 0 #000, 
+           2px -2px 0 #000, 
+          -2px  2px 0 #000, 
+           2px  2px 0 #000,
+          -2px  0   0 #000,
+           2px  0   0 #000,
+           0   -2px 0 #000,
+           0    2px 0 #000;
+      }
+
+      .text-stroke-lg {
+        text-shadow: 
+          -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000,
+          -3px 0 0 #000, 3px 0 0 #000, 0 -3px 0 #000, 0 3px 0 #000,
+          -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+      }
+
+      /* Hard shadow utility for buttons */
+      .shadow-hard {
+        box-shadow: 4px 4px 0px 0px rgba(0,0,0,1);
+      }
+      .shadow-hard-lg {
+        box-shadow: 8px 8px 0px 0px rgba(0,0,0,1);
+      }
+      .active-press:active {
+        box-shadow: 0px 0px 0px 0px rgba(0,0,0,1);
+        transform: translate(4px, 4px);
+      }
+      
+      /* Animating background pattern */
+      .bg-pattern {
+        background-image: radial-gradient(#000 10%, transparent 11%), radial-gradient(#000 10%, transparent 11%);
+        background-size: 30px 30px;
+        background-position: 0 0, 15px 15px;
+        opacity: 0.1;
+        animation: scrollBg 20s linear infinite;
+      }
+
+      @keyframes scrollBg {
+        0% { background-position: 0 0, 15px 15px; }
+        100% { background-position: 30px 30px, 45px 45px; }
+      }
+
+      /* Pop animation */
+      @keyframes popIn {
+        0% { transform: scale(0); opacity: 0; }
+        80% { transform: scale(1.1); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .animate-pop-in {
+        animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      }
+
+      /* Subtle Pulse for Time */
+      @keyframes pulseSubtle {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+      .animate-pulse-subtle {
+        animation: pulseSubtle 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+
+      /* Rainbow Crazy Animation */
+      @keyframes rainbowLiquid {
+        0% { background-color: #ef4444; } /* red */
+        20% { background-color: #eab308; } /* yellow */
+        40% { background-color: #22c55e; } /* green */
+        60% { background-color: #3b82f6; } /* blue */
+        80% { background-color: #a855f7; } /* purple */
+        100% { background-color: #ef4444; }
+      }
+      .animate-rainbow {
+        animation: rainbowLiquid 0.5s linear infinite;
+      }
+
+      @keyframes crazyShake {
+        0% { transform: translate(0, 0); }
+        20% { transform: translate(-2px, 2px); }
+        40% { transform: translate(2px, -2px); }
+        60% { transform: translate(-2px, -2px); }
+        80% { transform: translate(2px, 2px); }
+        100% { transform: translate(0, 0); }
+      }
+      .animate-crazy-shake {
+        animation: crazyShake 0.2s linear infinite;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.4",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.574.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

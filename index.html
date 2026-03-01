@@ -48,6 +48,7 @@ layout: none
 
     .shell {
       width: min(980px, 100%);
+      margin-inline: auto;
       border-radius: 20px;
       padding: 1.8rem;
       background: linear-gradient(136deg, rgba(12, 14, 28, 0.94), rgba(10, 12, 24, 0.94));
@@ -226,6 +227,8 @@ layout: none
       color: var(--muted);
       font-size: 0.78rem;
       letter-spacing: 0.03em;
+      line-height: 1.32;
+      white-space: nowrap;
     }
 
     .promptline .prompt {
@@ -234,6 +237,15 @@ layout: none
 
     .promptline .path {
       color: #8cb6ff;
+    }
+
+    .promptline .sigil {
+      display: inline-block;
+      transform: translateY(0.08em);
+    }
+
+    .promptline .cmd {
+      color: var(--muted);
     }
 
     .ambient {
@@ -283,6 +295,16 @@ layout: none
       min-width: 0;
     }
 
+    @media (min-width: 900px) {
+      .panel-terminal {
+        flex: 2 1 0;
+      }
+
+      .panel-about {
+        flex: 1 1 0;
+      }
+    }
+
     .panel h2 {
       margin: 0 0 0.8rem;
       font-size: 1.1rem;
@@ -297,12 +319,12 @@ layout: none
       gap: 0.45rem;
     }
 
-    .panel-terminal h2::before {
-      content: "$";
+    .panel-terminal .heading-sigil {
       color: var(--accent);
       font-family: var(--mono);
       font-size: 0.95rem;
-      transform: translateY(-1px);
+      line-height: 1;
+      flex: 0 0 auto;
     }
 
     .exp-list {
@@ -329,8 +351,11 @@ layout: none
 
     .exp-list li a {
       display: flex;
-      justify-content: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
       align-items: center;
+      min-width: 0;
+      overflow: hidden;
       padding: 0.65rem 0.9rem;
       border-radius: 12px;
       text-decoration: none;
@@ -347,6 +372,37 @@ layout: none
       margin-right: 0.6rem;
       color: var(--accent);
       font-weight: 700;
+    }
+
+    .entry-name {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+    }
+
+    .entry-stars {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.18rem;
+      flex: 0 0 auto;
+      margin-left: auto;
+      font-size: 0.84rem;
+    }
+
+    .entry-stars .star {
+      line-height: 1;
+      opacity: 0.95;
+    }
+
+    .entry-stars .star.filled {
+      color: var(--accent2);
+    }
+
+    .entry-stars .star.empty {
+      color: rgba(154, 163, 201, 0.55);
     }
 
     .exp-list li a:hover {
@@ -374,8 +430,9 @@ layout: none
     .socials {
       margin-top: 1rem;
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.55rem;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.45rem;
     }
 
     .socials a {
@@ -441,37 +498,37 @@ layout: none
       <div class="title-meta">
         <span>personal lab for small tools, sketches, and prototypes</span>
       </div>
-      <div class="promptline"><span class="prompt">lucsch@lab</span>:<span class="path">~/contents</span>$ ls -1</div>
+      <div class="promptline"><span class="prompt">lucsch@lab</span>:<span class="path">~/contents</span><span class="sigil">$</span> <span class="cmd">ls -1</span></div>
     </div>
     <div class="badge" id="lab-badge">personal lab</div>
   </header>
 
   <section class="grid">
     <section class="panel panel-terminal">
-      <h2>contents</h2>
+      <h2><span class="heading-sigil" aria-hidden="true">$</span>contents</h2>
       <ul class="exp-list" id="exp-list"></ul>
     </section>
 
-    <aside class="panel">
+    <aside class="panel panel-about">
       <h2>about</h2>
       <p class="note">a personal lab for practical utilities and visual sketches.</p>
       <p class="note">clean, fast, and a little experimental.</p>
       <div class="socials">
         <a href="https://discord.com/users/240742838202138624" target="_blank" rel="noreferrer">discord @k4d4</a>
-        <a href="https://steamcommunity.com/id/ghghrzg/" target="_blank" rel="noreferrer">steam</a>
+        <a href="https://steamcommunity.com/id/ghghrzg/" target="_blank" rel="noreferrer">steam @ghghrzg</a>
         <a href="https://www.linkedin.com/in/lucas-schaffer-a792b7182" target="_blank" rel="noreferrer">linkedin</a>
       </div>
       <p class="note secret">signal: lab mode engaged.</p>
     </aside>
   </section>
 </main>
-<script id="exp-template" type="application/json" class="template-data">
+<script id="content-template" type="application/json" class="template-data">
 [
-{% assign experiments = site.static_files
-  | where_exp: "file", "file.path contains '/experiments/'"
+{% assign contents_files = site.static_files
+  | where_exp: "file", "file.path contains '/contents/'"
   | where_exp: "file", "file.extname == '.html'"
   | sort: "path" %}
-{% for file in experiments %}
+{% for file in contents_files %}
   {
     "path": "{{ file.path | escape }}",
     "name": "{{ file.name | remove: file.extname | escape }}"
@@ -483,7 +540,7 @@ layout: none
   const glow = document.querySelector(".cursor-glow");
   const badge = document.getElementById("lab-badge");
   const ambient = document.querySelector(".ambient");
-  const expList = document.getElementById("exp-list");
+  const contentList = document.getElementById("exp-list");
   const shell = document.querySelector(".shell");
   const logoTrigger = document.getElementById("logo-trigger");
   let keyBuffer = "";
@@ -579,9 +636,9 @@ layout: none
     const fullPeakY = Math.min(-235, shellRect.top - rect.top - rect.height - 34);
     const basePeakY = fullPeakY * 0.5;
     const peakOffsetY = clamp(rand(-12, 12), -7, 7);
-    const peakY = clamp(basePeakY + peakOffsetY, -136, -98);
+    const peakY = clamp((basePeakY + peakOffsetY) * 1.2, -163.2, -117.6);
     const peakOffsetX = clamp(rand(-34, 34), -38, 38);
-    const peakRotate = clamp(rand(-12.5, -2.4), -13, -2);
+    const peakRotate = rand(-40, 40);
     const peakX = drift + peakOffsetX;
     const liftDuration = rand(620, 840);
     const fallDuration = rand(640, 780);
@@ -684,52 +741,211 @@ layout: none
     spots.push(createSpot());
   }
 
-  function fallbackExperiments() {
-    return [
-      { path: "./experiments/time_since.html", name: "time_since" },
-      { path: "./experiments/solar_visualization.html", name: "solar_visualization" }
-    ];
+  const CONTENTS_ROOT = "./contents/";
+  const CONTENTS_CONFIG_URL = "./contents-config.json";
+
+  function clampRating(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 1;
+    return Math.min(3, Math.max(1, Math.round(numeric)));
   }
 
-  function readExperiments() {
-    const template = document.getElementById("exp-template");
-    if (!template) return fallbackExperiments();
+  function normalizeContentKey(raw) {
+    return String(raw || "")
+      .toLowerCase()
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/^[./]+/, "")
+      .replace(/^contents\//, "")
+      .replace(/\/index\.html?$/, "")
+      .replace(/\.html?$/, "")
+      .replace(/\/+$/, "")
+      .replace(/\s+/g, "_");
+  }
+
+  function readTemplateContents() {
+    const template = document.getElementById("content-template");
+    if (!template) return null;
     try {
       const parsed = JSON.parse(template.textContent);
-      if (!Array.isArray(parsed)) return fallbackExperiments();
+      if (!Array.isArray(parsed)) return null;
       return parsed;
     } catch (error) {
-      return fallbackExperiments();
+      return null;
     }
   }
 
-  function renderExperiments() {
-    const items = readExperiments().slice().sort((a, b) => {
-      const nameA = (a.name || "").replace(/\.html?$/i, "").toLowerCase();
-      const nameB = (b.name || "").replace(/\.html?$/i, "").toLowerCase();
-      return nameA.localeCompare(nameB);
-    });
-    expList.innerHTML = "";
+  async function readContentsConfig() {
+    try {
+      const response = await fetch(CONTENTS_CONFIG_URL, { cache: "no-store" });
+      if (!response.ok) return { ratings: {} };
+      const parsed = await response.json();
+      if (!parsed || typeof parsed !== "object") return { ratings: {} };
+      const rawRatings = parsed.ratings && typeof parsed.ratings === "object" ? parsed.ratings : {};
+      const ratings = {};
+      Object.entries(rawRatings).forEach(([rawKey, rawValue]) => {
+        const normalizedKey = normalizeContentKey(rawKey);
+        if (!normalizedKey) return;
+        ratings[normalizedKey] = clampRating(rawValue);
+      });
+      return { ratings };
+    } catch (error) {
+      return { ratings: {} };
+    }
+  }
+
+  async function readContentsFromDirectoryListing() {
+    try {
+      const response = await fetch(CONTENTS_ROOT, { cache: "no-store" });
+      if (!response.ok) return null;
+      const html = await response.text();
+      if (!html || !/<a\s/i.test(html)) return null;
+
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const baseUrl = new URL(CONTENTS_ROOT, window.location.href);
+      const links = Array.from(doc.querySelectorAll("a[href]"));
+      const seen = new Set();
+      const items = [];
+
+      links.forEach((link) => {
+        const href = (link.getAttribute("href") || "").trim();
+        if (!href || href === "/" || href.startsWith("?") || href.startsWith("#")) return;
+        if (href === "../" || href.toLowerCase().includes("parent")) return;
+
+        let url;
+        try {
+          url = new URL(href, baseUrl);
+        } catch (error) {
+          return;
+        }
+
+        if (url.origin !== window.location.origin) return;
+        const pathname = decodeURIComponent(url.pathname);
+        if (!pathname.toLowerCase().includes("/contents/")) return;
+
+        const isDirectory = pathname.endsWith("/");
+        if (isDirectory) {
+          if (/\/contents\/$/i.test(pathname)) return;
+          if (seen.has(pathname)) return;
+          seen.add(pathname);
+
+          const dirName = pathname.split("/").filter(Boolean).pop() || "untitled";
+          items.push({
+            path: pathname,
+            name: dirName
+          });
+          return;
+        }
+
+        if (!/\.html?$/i.test(pathname)) return;
+        if (seen.has(pathname)) return;
+        seen.add(pathname);
+
+        const name = pathname.split("/").pop().replace(/\.html?$/i, "");
+        items.push({
+          path: pathname,
+          name
+        });
+      });
+
+      return items.length > 0 ? items : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function getItemName(item) {
+    const rawName = String(item?.name || "").replace(/\.html?$/i, "");
+    if (rawName && rawName.toLowerCase() !== "index") return rawName;
+
+    const rawPath = String(item?.path || "");
+    const cleanPath = rawPath.replace(/[?#].*$/, "").replace(/\/+$/, "");
+    const segments = cleanPath.split("/").filter(Boolean);
+    if (segments.length === 0) return "untitled";
+
+    const last = segments[segments.length - 1].toLowerCase();
+    if (last === "index.html" || last === "index.htm" || last === "index") {
+      return segments[segments.length - 2] || "index";
+    }
+    return segments[segments.length - 1].replace(/\.html?$/i, "");
+  }
+
+  async function readContents() {
+    const templateItems = readTemplateContents();
+    if (Array.isArray(templateItems) && templateItems.length > 0) return templateItems;
+
+    const directoryItems = await readContentsFromDirectoryListing();
+    if (Array.isArray(directoryItems) && directoryItems.length > 0) return directoryItems;
+
+    return [];
+  }
+
+  function resolveItemRating(item, config) {
+    const ratings = config && config.ratings && typeof config.ratings === "object" ? config.ratings : {};
+    const nameKey = normalizeContentKey(getItemName(item));
+    const pathKey = normalizeContentKey(item && item.path);
+    const basePathKey = pathKey.split("/").pop() || "";
+    const candidates = [nameKey, pathKey, basePathKey];
+
+    for (const key of candidates) {
+      if (!key) continue;
+      if (Object.prototype.hasOwnProperty.call(ratings, key)) {
+        return clampRating(ratings[key]);
+      }
+    }
+
+    return 1;
+  }
+
+  function createStarsElement(rating) {
+    const stars = document.createElement("span");
+    stars.className = "entry-stars";
+    stars.setAttribute("aria-label", `${rating} of 3 stars`);
+
+    for (let i = 1; i <= 3; i += 1) {
+      const star = document.createElement("span");
+      star.className = `star ${i <= rating ? "filled" : "empty"}`;
+      star.textContent = String.fromCharCode(9733);
+      stars.appendChild(star);
+    }
+
+    return stars;
+  }
+
+  async function renderContents() {
+    const config = await readContentsConfig();
+    const items = (await readContents())
+      .map((item) => ({
+        item,
+        name: getItemName(item),
+        rating: resolveItemRating(item, config)
+      }))
+      .sort((a, b) => {
+        if (b.rating !== a.rating) return b.rating - a.rating;
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
+    contentList.innerHTML = "";
     if (items.length === 0) {
       const li = document.createElement("li");
       li.className = "exp-empty";
-      li.textContent = "no experiments yet";
-      expList.appendChild(li);
+      li.textContent = "no contents yet";
+      contentList.appendChild(li);
       return;
     }
 
-    items.forEach((item, index) => {
+    items.forEach(({ item, name: entryName, rating }, index) => {
       const li = document.createElement("li");
       li.style.setProperty("--i", String(index));
       const a = document.createElement("a");
       a.href = item.path;
-      const strong = document.createElement("strong");
-      const rawName = item.name || "";
-      const nameOnly = rawName.replace(/\.html?$/i, "");
-      strong.textContent = nameOnly;
-      a.appendChild(strong);
+      a.title = entryName;
+      const titleEl = document.createElement("strong");
+      titleEl.className = "entry-name";
+      titleEl.textContent = entryName;
+      a.appendChild(titleEl);
+      a.appendChild(createStarsElement(rating));
       li.appendChild(a);
-      expList.appendChild(li);
+      contentList.appendChild(li);
     });
   }
 
@@ -761,7 +977,7 @@ layout: none
   }
 
   requestAnimationFrame(animateSpots);
-  renderExperiments();
+  renderContents();
 
   if (logoTrigger) {
     logoTrigger.addEventListener("click", logoHop);

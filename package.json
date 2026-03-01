@@ -1,0 +1,13 @@
+{
+  "name": "webpage-content-workspace",
+  "private": true,
+  "scripts": {
+    "install:all": "node scripts/install-all.mjs",
+    "install:pop-a-lot-arcade": "npm --prefix apps/pop-a-lot-arcade install",
+    "dev:pop-a-lot-arcade": "npm --prefix apps/pop-a-lot-arcade run dev",
+    "build:pop-a-lot-arcade": "npm --prefix apps/pop-a-lot-arcade run build",
+    "build:all": "node scripts/build-all.mjs",
+    "build:changed": "node scripts/build-changed.mjs",
+    "build:changed:all-if-none": "node scripts/build-changed.mjs --all-if-none"
+  }
+}
