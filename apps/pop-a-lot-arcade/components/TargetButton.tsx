@@ -105,7 +105,7 @@ const TargetButton: React.FC<Props> = ({ target, sizePx, zIndex = 10, onClick })
               style={{
                  transform: `translate(${offset}px, ${offset}px)`,
                  zIndex: -reversedIndex, 
-                 filter: reversedIndex > 0 ? 'brightness(0.8)' : 'none'
+                 opacity: reversedIndex > 0 ? 0.88 : 1
               }}
             >
                {renderShape(opacity)}

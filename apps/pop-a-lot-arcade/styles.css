@@ -1,3 +1,22 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes floatUp {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -150%) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -250%) scale(1);
+    opacity: 0;
+  }
+}
+
+.animate-float-up {
+  animation: floatUp 0.8s forwards;
+}

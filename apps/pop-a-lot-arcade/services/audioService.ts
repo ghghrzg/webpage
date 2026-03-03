@@ -22,6 +22,28 @@ interface RenderOptions {
   sampleRate?: number;
 }
 
+interface HtmlVoice {
+  audio: HTMLAudioElement;
+  lastStartAt: number;
+  estimatedBusyUntil: number;
+  lastRate: number;
+  lastVolume: number;
+}
+
+interface HtmlSampleMeta {
+  dataUri: string;
+  baseVolume: number;
+  fallbackDurationSec: number;
+  maxVoices: number;
+}
+
+export interface AudioPerfSnapshot {
+  timestamp: number;
+  playsPerSecond: number;
+  voiceStealsPerSecond: number;
+  poolSizes: Record<string, number>;
+}
+
 class AudioService {
   // WebAudio engine (desktop/non-iOS fallback)
   private ctx: AudioContext | null = null;
@@ -41,18 +63,99 @@ class AudioService {
   private readonly useHtmlMediaEngine: boolean;
   private htmlReady = false;
   private htmlInitPromise: Promise<void> | null = null;
-  private readonly htmlSamplePools = new Map<string, HTMLAudioElement[]>();
-  private readonly htmlSamplePoolIndex = new Map<string, number>();
-  private readonly htmlSampleVolume = new Map<string, number>();
+  private readonly htmlSampleVoices = new Map<string, HtmlVoice[]>();
+  private readonly htmlSampleMeta = new Map<string, HtmlSampleMeta>();
   private htmlMusic: HTMLAudioElement | null = null;
   private readonly baseHtmlMusicVolume = 0.2;
   private readonly outputGainMultiplier = OUTPUT_GAIN_MULTIPLIER;
+  private readonly perfDebugEnabled: boolean;
+  private readonly perfCounters = {
+    plays: 0,
+    voiceSteals: 0,
+  };
+  private perfWindowStartMs = 0;
+  private perfLastSnapshotAtMs = 0;
+  private perfTickerId: number | null = null;
+  private perfSnapshot: AudioPerfSnapshot = {
+    timestamp: 0,
+    playsPerSecond: 0,
+    voiceStealsPerSecond: 0,
+    poolSizes: {},
+  };
 
   private isMuted: boolean = false;
   private isMusicPlaying: boolean = false;
 
   constructor() {
     this.useHtmlMediaEngine = USE_HTML_MEDIA_ENGINE_EVERYWHERE || this.isAppleMobileDevice();
+    this.perfDebugEnabled = this.readPerfDebugFlag();
+    this.startPerfTelemetry();
+  }
+
+  private readPerfDebugFlag() {
+    if (typeof window === 'undefined') return false;
+    try {
+      return new URLSearchParams(window.location.search).get('perf') === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  private nowMs() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+      return performance.now();
+    }
+    return Date.now();
+  }
+
+  private startPerfTelemetry() {
+    if (!this.perfDebugEnabled || typeof window === 'undefined' || this.perfTickerId !== null) return;
+    const now = this.nowMs();
+    this.perfWindowStartMs = now;
+    this.perfLastSnapshotAtMs = now;
+    this.perfTickerId = window.setInterval(() => {
+      this.flushPerfSnapshot();
+    }, 1000);
+  }
+
+  private maybeRefreshPerfSnapshot() {
+    if (!this.perfDebugEnabled) return;
+    const now = this.nowMs();
+    if (now - this.perfLastSnapshotAtMs >= 1000) {
+      this.flushPerfSnapshot(now);
+    }
+  }
+
+  private flushPerfSnapshot(nowMs: number = this.nowMs()) {
+    if (!this.perfDebugEnabled) return;
+    const elapsedMs = Math.max(1, nowMs - this.perfWindowStartMs);
+    const poolSizes: Record<string, number> = {};
+    this.htmlSampleVoices.forEach((voices, sampleName) => {
+      poolSizes[sampleName] = voices.length;
+    });
+
+    this.perfSnapshot = {
+      timestamp: Date.now(),
+      playsPerSecond: (this.perfCounters.plays * 1000) / elapsedMs,
+      voiceStealsPerSecond: (this.perfCounters.voiceSteals * 1000) / elapsedMs,
+      poolSizes,
+    };
+    this.perfCounters.plays = 0;
+    this.perfCounters.voiceSteals = 0;
+    this.perfWindowStartMs = nowMs;
+    this.perfLastSnapshotAtMs = nowMs;
+    this.publishPerfSnapshot();
+  }
+
+  private publishPerfSnapshot() {
+    if (!this.perfDebugEnabled || typeof window === 'undefined') return;
+    (window as Window & { __popALotAudioPerf?: AudioPerfSnapshot }).__popALotAudioPerf = this.perfSnapshot;
+  }
+
+  public getPerfSnapshot(): AudioPerfSnapshot | null {
+    if (!this.perfDebugEnabled) return null;
+    this.maybeRefreshPerfSnapshot();
+    return this.perfSnapshot;
   }
 
   private isAppleMobileDevice() {
@@ -162,19 +265,19 @@ class AudioService {
         this.renderMusicLoopSample(),
       ]);
 
-      this.registerHtmlSample('pop', pop, 14, 0.5);
-      this.registerHtmlSample('comboBoost', comboBoost, 4, 0.3);
-      this.registerHtmlSample('speedBonus', speedBonus, 4, 0.25);
-      this.registerHtmlSample('comboBreak', comboBreak, 3, 0.34);
-      this.registerHtmlSample('timerPing523', timerPing523, 3, 0.3);
-      this.registerHtmlSample('timerPing660', timerPing660, 3, 0.3);
-      this.registerHtmlSample('timerPing880', timerPing880, 3, 0.3);
-      this.registerHtmlSample('timerPing987', timerPing987, 3, 0.3);
-      this.registerHtmlSample('timerPing1174', timerPing1174, 3, 0.3);
-      this.registerHtmlSample('gameOver', gameOver, 2, 0.3);
-      this.registerHtmlSample('gameOverGodlike', gameOverGodlike, 2, 0.32);
-      this.registerHtmlSample('milestoneSmall', milestoneSmall, 2, 0.28);
-      this.registerHtmlSample('milestoneBig', milestoneBig, 2, 0.3);
+      this.registerHtmlSample('pop', pop, 16, 0.5, 120, 30);
+      this.registerHtmlSample('comboBoost', comboBoost, 10, 0.3, 124, 24);
+      this.registerHtmlSample('speedBonus', speedBonus, 10, 0.25, 110, 24);
+      this.registerHtmlSample('comboBreak', comboBreak, 5, 0.34, 305, 12);
+      this.registerHtmlSample('timerPing523', timerPing523, 5, 0.3, 170, 10);
+      this.registerHtmlSample('timerPing660', timerPing660, 5, 0.3, 170, 10);
+      this.registerHtmlSample('timerPing880', timerPing880, 5, 0.3, 170, 10);
+      this.registerHtmlSample('timerPing987', timerPing987, 5, 0.3, 170, 10);
+      this.registerHtmlSample('timerPing1174', timerPing1174, 5, 0.3, 170, 10);
+      this.registerHtmlSample('gameOver', gameOver, 3, 0.3, 790, 6);
+      this.registerHtmlSample('gameOverGodlike', gameOverGodlike, 3, 0.32, 620, 6);
+      this.registerHtmlSample('milestoneSmall', milestoneSmall, 3, 0.28, 262, 8);
+      this.registerHtmlSample('milestoneBig', milestoneBig, 3, 0.3, 262, 8);
 
       this.htmlMusic = new Audio(musicLoop);
       this.htmlMusic.loop = true;
@@ -193,38 +296,62 @@ class AudioService {
     const pop = this.makeSequenceSampleFallback([
       { startMs: 0, durationMs: 110, freqStart: 320, freqEnd: 620, wave: 'sine', volume: 0.45 },
     ], 120);
-    this.registerHtmlSample('pop', pop, 12, 0.45);
-    this.registerHtmlSample('comboBoost', pop, 4, 0.2);
-    this.registerHtmlSample('speedBonus', pop, 4, 0.2);
-    this.registerHtmlSample('comboBreak', pop, 3, 0.3);
-    this.registerHtmlSample('timerPing523', pop, 4, 0.2);
-    this.registerHtmlSample('timerPing660', pop, 4, 0.2);
-    this.registerHtmlSample('timerPing880', pop, 4, 0.2);
-    this.registerHtmlSample('timerPing987', pop, 4, 0.2);
-    this.registerHtmlSample('timerPing1174', pop, 4, 0.2);
-    this.registerHtmlSample('gameOver', pop, 2, 0.22);
-    this.registerHtmlSample('gameOverGodlike', pop, 2, 0.24);
-    this.registerHtmlSample('milestoneSmall', pop, 2, 0.22);
-    this.registerHtmlSample('milestoneBig', pop, 2, 0.24);
+    this.registerHtmlSample('pop', pop, 14, 0.45, 120, 24);
+    this.registerHtmlSample('comboBoost', pop, 10, 0.2, 120, 20);
+    this.registerHtmlSample('speedBonus', pop, 10, 0.2, 120, 20);
+    this.registerHtmlSample('comboBreak', pop, 5, 0.3, 180, 10);
+    this.registerHtmlSample('timerPing523', pop, 5, 0.2, 180, 10);
+    this.registerHtmlSample('timerPing660', pop, 5, 0.2, 180, 10);
+    this.registerHtmlSample('timerPing880', pop, 5, 0.2, 180, 10);
+    this.registerHtmlSample('timerPing987', pop, 5, 0.2, 180, 10);
+    this.registerHtmlSample('timerPing1174', pop, 5, 0.2, 180, 10);
+    this.registerHtmlSample('gameOver', pop, 3, 0.22, 220, 6);
+    this.registerHtmlSample('gameOverGodlike', pop, 3, 0.24, 220, 6);
+    this.registerHtmlSample('milestoneSmall', pop, 3, 0.22, 180, 8);
+    this.registerHtmlSample('milestoneBig', pop, 3, 0.24, 180, 8);
     this.htmlMusic = new Audio(pop);
     this.htmlMusic.loop = true;
     this.htmlMusic.preload = 'auto';
     this.htmlMusic.volume = this.isMuted ? 0 : this.getHtmlMusicVolume();
   }
 
-  private registerHtmlSample(name: string, dataUri: string, poolSize: number, volume: number) {
-    const pool: HTMLAudioElement[] = [];
+  private createHtmlVoice(meta: HtmlSampleMeta): HtmlVoice {
+    const audio = new Audio(meta.dataUri);
+    audio.preload = 'auto';
+    this.disablePitchCorrection(audio);
+    audio.volume = meta.baseVolume;
+    audio.load();
+    return {
+      audio,
+      lastStartAt: 0,
+      estimatedBusyUntil: 0,
+      lastRate: 1,
+      lastVolume: meta.baseVolume,
+    };
+  }
+
+  private registerHtmlSample(
+    name: string,
+    dataUri: string,
+    poolSize: number,
+    volume: number,
+    fallbackDurationMs: number = 180,
+    maxVoices: number = Math.max(poolSize + 2, Math.ceil(poolSize * 2.25))
+  ) {
+    const pool: HtmlVoice[] = [];
     const scaledVolume = this.scaleVolume(volume);
+    const meta: HtmlSampleMeta = {
+      dataUri,
+      baseVolume: scaledVolume,
+      fallbackDurationSec: Math.max(0.02, fallbackDurationMs / 1000),
+      maxVoices: Math.max(poolSize, maxVoices),
+    };
     for (let i = 0; i < poolSize; i += 1) {
-      const audio = new Audio(dataUri);
-      audio.preload = 'auto';
-      this.disablePitchCorrection(audio);
-      audio.volume = scaledVolume;
-      pool.push(audio);
+      pool.push(this.createHtmlVoice(meta));
     }
-    this.htmlSamplePools.set(name, pool);
-    this.htmlSamplePoolIndex.set(name, 0);
-    this.htmlSampleVolume.set(name, scaledVolume);
+    this.htmlSampleMeta.set(name, meta);
+    this.htmlSampleVoices.set(name, pool);
+    this.maybeRefreshPerfSnapshot();
   }
 
   private disablePitchCorrection(audio: HTMLAudioElement) {
@@ -248,22 +375,97 @@ class AudioService {
     return this.scaleVolume(this.baseHtmlMusicVolume);
   }
 
+  private getHtmlVoiceDurationSec(sampleName: string, voice: HtmlVoice, playbackRate: number) {
+    const meta = this.htmlSampleMeta.get(sampleName);
+    const fallbackDuration = meta?.fallbackDurationSec ?? 0.18;
+    const rawDuration = Number.isFinite(voice.audio.duration) && voice.audio.duration > 0
+      ? voice.audio.duration
+      : fallbackDuration;
+    return Math.max(0.02, rawDuration / Math.max(0.5, playbackRate));
+  }
+
+  private selectHtmlVoice(sampleName: string): { voice: HtmlVoice; stoleVoice: boolean } | null {
+    const meta = this.htmlSampleMeta.get(sampleName);
+    const pool = this.htmlSampleVoices.get(sampleName);
+    if (!meta || !pool || pool.length === 0) return null;
+
+    const now = this.nowMs();
+    let freeVoice: HtmlVoice | null = null;
+    let stealCandidate: HtmlVoice | null = null;
+    let shortestRemainingMs = Number.POSITIVE_INFINITY;
+
+    for (const voice of pool) {
+      const remainingMs = voice.estimatedBusyUntil - now;
+      if (voice.audio.ended || voice.audio.paused || remainingMs <= 0) {
+        freeVoice = voice;
+        break;
+      }
+      if (remainingMs < shortestRemainingMs) {
+        shortestRemainingMs = remainingMs;
+        stealCandidate = voice;
+      }
+    }
+
+    if (freeVoice) {
+      return { voice: freeVoice, stoleVoice: false };
+    }
+
+    const canGrow = pool.length < meta.maxVoices;
+    if (canGrow && (shortestRemainingMs > 24 || !stealCandidate)) {
+      const freshVoice = this.createHtmlVoice(meta);
+      pool.push(freshVoice);
+      return { voice: freshVoice, stoleVoice: false };
+    }
+
+    if (stealCandidate) {
+      return { voice: stealCandidate, stoleVoice: true };
+    }
+
+    if (canGrow) {
+      const freshVoice = this.createHtmlVoice(meta);
+      pool.push(freshVoice);
+      return { voice: freshVoice, stoleVoice: false };
+    }
+
+    return null;
+  }
+
   private playHtmlSample(name: string, playbackRate: number = 1) {
     if (this.isMuted || !this.htmlReady) return;
-    const pool = this.htmlSamplePools.get(name);
-    if (!pool || pool.length === 0) return;
+    const meta = this.htmlSampleMeta.get(name);
+    if (!meta) return;
 
-    const currentIndex = this.htmlSamplePoolIndex.get(name) ?? 0;
-    this.htmlSamplePoolIndex.set(name, (currentIndex + 1) % pool.length);
-    const audio = pool[currentIndex];
+    const clampedRate = Math.max(0.5, Math.min(2.6, playbackRate));
+    const selected = this.selectHtmlVoice(name);
+    if (!selected) return;
 
-    audio.pause();
+    const { voice, stoleVoice } = selected;
+    const audio = voice.audio;
+    if (stoleVoice) {
+      this.perfCounters.voiceSteals += 1;
+    }
+    if (!audio.paused) {
+      audio.pause();
+    }
     audio.currentTime = 0;
-    this.disablePitchCorrection(audio);
-    audio.playbackRate = Math.max(0.5, Math.min(2.6, playbackRate));
-    audio.volume = this.htmlSampleVolume.get(name) ?? 0.3;
+    if (Math.abs(voice.lastRate - clampedRate) > 0.001) {
+      audio.playbackRate = clampedRate;
+      voice.lastRate = clampedRate;
+    }
+    if (Math.abs(voice.lastVolume - meta.baseVolume) > 0.001) {
+      audio.volume = meta.baseVolume;
+      voice.lastVolume = meta.baseVolume;
+    }
+
+    const now = this.nowMs();
+    voice.lastStartAt = now;
+    voice.estimatedBusyUntil = now + (this.getHtmlVoiceDurationSec(name, voice, clampedRate) * 1000);
+    this.perfCounters.plays += 1;
+    this.maybeRefreshPerfSnapshot();
+
     audio.play().catch(() => {
       // Ignore blocked play errors before first user interaction.
+      voice.estimatedBusyUntil = this.nowMs();
     });
   }
 

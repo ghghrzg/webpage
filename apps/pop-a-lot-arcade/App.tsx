@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GameState, Target, RunHistoryItem, GameStats, GameMode, Shape } from './types';
 import { GAME_DURATION, MODE_CONFIG } from './constants';
-import { audioService } from './services/audioService';
+import { audioService, type AudioPerfSnapshot } from './services/audioService';
 import { getGameCommentary, GameCommentary } from './services/commentaryService';
 import TargetButton from './components/TargetButton';
 import ShapePreview from './components/ShapePreview';
@@ -16,12 +16,41 @@ const GODLIKE_SCORE_THRESHOLD = 20000;
 const PRO_QUEUE_LENGTH = 3;
 const PRO_QUEUE_ICON_SCALE = 0.75;
 const SHOW_SPAWN_DEBUG_FRAME = false;
+const MULTIPLIER_UI_MAX_HZ = 30;
+const MULTIPLIER_UI_MIN_STEP = 0.02;
+
+const isPerfDebugEnabled = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return new URLSearchParams(window.location.search).get('perf') === '1';
+  } catch {
+    return false;
+  }
+};
+const PERF_DEBUG_ENABLED = isPerfDebugEnabled();
+const IS_COARSE_POINTER = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
 type SpawnDebugRect = {
   left: number;
   top: number;
   width: number;
   height: number;
+};
+
+type RectLike = { left: number; right: number; top: number; bottom: number };
+
+type SpawnLayoutMetrics = {
+  width: number;
+  height: number;
+  maxSpawnBottom: number;
+  uiNoSpawnZones: RectLike[];
+};
+
+type SpawnPerfSnapshot = {
+  width: number;
+  height: number;
+  maxSpawnBottom: number;
+  noSpawnZoneCount: number;
 };
 
 function loadRunHistoryFromStorage(): RunHistoryItem[] {
@@ -81,6 +110,7 @@ const App: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
   const [targets, setTargets] = useState<Target[]>([]);
   const [spawnDebugRect, setSpawnDebugRect] = useState<SpawnDebugRect | null>(null);
+  const [spawnPerfSnapshot, setSpawnPerfSnapshot] = useState<SpawnPerfSnapshot | null>(null);
   const [runHistory, setRunHistory] = useState<RunHistoryItem[]>(() => loadRunHistoryFromStorage());
   const [proRoute, setProRoute] = useState<Shape[]>([]);
   
@@ -103,15 +133,21 @@ const App: React.FC = () => {
   const [isMuted, setIsMuted] = useState<boolean>(() => loadMutedStateFromStorage());
   const [aiAnalysis, setAiAnalysis] = useState<GameCommentary | null>(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
+  const [audioPerfSnapshot, setAudioPerfSnapshot] = useState<AudioPerfSnapshot | null>(null);
   
   // Refs
   const gameLoopRef = useRef<number | null>(null);
   const spawnCheckRef = useRef<number | null>(null);
   const multiplierDecayRef = useRef<number | null>(null);
   const lastMultiplierUpdateRef = useRef<number>(0);
+  const lastMultiplierUiCommitRef = useRef<number>(0);
   const timeLeftRef = useRef<number>(GAME_DURATION);
   const scoreRef = useRef<number>(0);
+  const multiplierValueRef = useRef<number>(1.0);
+  const displayedMultiplierRef = useRef<number>(1.0);
   const gameOverHandledRef = useRef(false);
+  const spawnLayoutMetricsRef = useRef<SpawnLayoutMetrics | null>(null);
+  const spawnLayoutDebounceRef = useRef<number | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const scorePanelDesktopRef = useRef<HTMLDivElement>(null);
   const scorePanelMobileRef = useRef<HTMLDivElement>(null);
@@ -175,6 +211,34 @@ const App: React.FC = () => {
     }
   }, [isMuted]);
 
+  useEffect(() => {
+    if (!PERF_DEBUG_ENABLED) return;
+    const perfPollId = window.setInterval(() => {
+      setAudioPerfSnapshot(audioService.getPerfSnapshot());
+    }, 500);
+    return () => window.clearInterval(perfPollId);
+  }, []);
+
+  const updateMultiplierDisplay = useCallback((nextValue: number, force: boolean = false, timestampMs?: number) => {
+    const clamped = Math.max(1, Math.min(MULTIPLIER_CAP, nextValue));
+    multiplierValueRef.current = clamped;
+
+    const now = timestampMs ?? (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const minIntervalMs = 1000 / MULTIPLIER_UI_MAX_HZ;
+    const shouldCommit =
+      force ||
+      Math.abs(clamped - displayedMultiplierRef.current) >= MULTIPLIER_UI_MIN_STEP ||
+      (now - lastMultiplierUiCommitRef.current) >= minIntervalMs ||
+      clamped <= 1.001 ||
+      clamped >= MULTIPLIER_CAP - 0.001;
+
+    if (!shouldCommit) return;
+
+    displayedMultiplierRef.current = clamped;
+    lastMultiplierUiCommitRef.current = now;
+    setMultiplier(clamped);
+  }, []);
+
   // Handle Resize - End game if playing
   const stopAllLoops = useCallback(() => {
     if (gameLoopRef.current) {
@@ -189,6 +253,10 @@ const App: React.FC = () => {
       cancelAnimationFrame(multiplierDecayRef.current);
       multiplierDecayRef.current = null;
     }
+    if (spawnLayoutDebounceRef.current) {
+      clearTimeout(spawnLayoutDebounceRef.current);
+      spawnLayoutDebounceRef.current = null;
+    }
     audioService.stopMusic();
   }, []);
 
@@ -200,6 +268,7 @@ const App: React.FC = () => {
     setHasInteractionStarted(false);
     setProRoute([]);
     proRouteRef.current = [];
+    spawnLayoutMetricsRef.current = null;
   }, [stopAllLoops]);
 
   const shapeShortLabel = useCallback((shape: Shape) => {
@@ -321,6 +390,7 @@ const App: React.FC = () => {
     stopAllLoops();
     setGameState(GameState.START);
     setTargets([]); 
+    spawnLayoutMetricsRef.current = null;
     // Play a distinct sound for feedback
     audioService.playComboBreak(); 
     setFeedbackMessage("WINDOW RESIZED! GAME RESET!");
@@ -375,17 +445,20 @@ const App: React.FC = () => {
     };
   }, [stopAllLoops]);
 
-  const spawnIfNeeded = useCallback(() => {
-    if (gameState !== GameState.PLAYING) return;
-    
-    // Use play-area coordinates instead of viewport coordinates.
+  const recomputeSpawnLayoutMetrics = useCallback(() => {
     const playAreaRect = gameContainerRef.current?.getBoundingClientRect();
     const playAreaLeft = playAreaRect?.left ?? 0;
     const playAreaTop = playAreaRect?.top ?? 0;
     const width = Math.round(playAreaRect?.width ?? window.innerWidth);
     const height = Math.round(playAreaRect?.height ?? window.innerHeight);
-    
-    if (width === 0 || height === 0) return;
+
+    if (width === 0 || height === 0) {
+      spawnLayoutMetricsRef.current = null;
+      if (PERF_DEBUG_ENABLED) {
+        setSpawnPerfSnapshot(null);
+      }
+      return;
+    }
 
     const mobileViewport = width < 768;
     const noSpawnPadX = mobileViewport
@@ -406,7 +479,6 @@ const App: React.FC = () => {
         })()
       : 0;
 
-    type RectLike = { left: number; right: number; top: number; bottom: number };
     const uiNoSpawnZones: RectLike[] = [];
     const pushUiNoSpawnZone = (
       rect: RectLike,
@@ -463,12 +535,20 @@ const App: React.FC = () => {
       }
     }
 
+    const maxSpawnBottom = Math.max(0, height - mobileBottomSafeInset);
+    spawnLayoutMetricsRef.current = {
+      width,
+      height,
+      maxSpawnBottom,
+      uiNoSpawnZones,
+    };
+
     if (SHOW_SPAWN_DEBUG_FRAME) {
       const nextDebugRect = {
         left: 0,
         top: 0,
         width,
-        height: Math.max(0, height - mobileBottomSafeInset),
+        height: maxSpawnBottom,
       };
       setSpawnDebugRect((prev) => {
         if (
@@ -482,9 +562,66 @@ const App: React.FC = () => {
         }
         return nextDebugRect;
       });
+    } else {
+      setSpawnDebugRect(null);
     }
 
-    const maxSpawnBottom = Math.max(0, height - mobileBottomSafeInset);
+    if (PERF_DEBUG_ENABLED) {
+      setSpawnPerfSnapshot({
+        width,
+        height,
+        maxSpawnBottom,
+        noSpawnZoneCount: uiNoSpawnZones.length,
+      });
+    }
+  }, [currentMode, targetSizePx]);
+
+  const scheduleSpawnLayoutRecompute = useCallback((delayMs: number = 80) => {
+    if (spawnLayoutDebounceRef.current) {
+      clearTimeout(spawnLayoutDebounceRef.current);
+    }
+    spawnLayoutDebounceRef.current = window.setTimeout(() => {
+      spawnLayoutDebounceRef.current = null;
+      recomputeSpawnLayoutMetrics();
+    }, delayMs);
+  }, [recomputeSpawnLayoutMetrics]);
+
+  useEffect(() => {
+    if (gameState !== GameState.PLAYING) return;
+    // Wait one frame so playing HUD refs are mounted and measurable.
+    scheduleSpawnLayoutRecompute(0);
+  }, [gameState, currentMode, scheduleSpawnLayoutRecompute]);
+
+  useEffect(() => {
+    if (gameState !== GameState.PLAYING || currentMode !== 'Pro') return;
+    scheduleSpawnLayoutRecompute(30);
+  }, [proRoute, gameState, currentMode, scheduleSpawnLayoutRecompute]);
+
+  useEffect(() => {
+    const onViewportChange = () => {
+      scheduleSpawnLayoutRecompute();
+    };
+
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('orientationchange', onViewportChange);
+    const visualViewport = window.visualViewport;
+    visualViewport?.addEventListener('resize', onViewportChange);
+    visualViewport?.addEventListener('scroll', onViewportChange);
+
+    return () => {
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('orientationchange', onViewportChange);
+      visualViewport?.removeEventListener('resize', onViewportChange);
+      visualViewport?.removeEventListener('scroll', onViewportChange);
+    };
+  }, [scheduleSpawnLayoutRecompute]);
+
+  const spawnIfNeeded = useCallback(() => {
+    if (gameState !== GameState.PLAYING) return;
+    const layoutMetrics = spawnLayoutMetricsRef.current;
+    if (!layoutMetrics) return;
+
+    const { width, height, maxSpawnBottom, uiNoSpawnZones } = layoutMetrics;
 
     setTargets(prev => {
       const config = MODE_CONFIG[currentMode];
@@ -701,18 +838,19 @@ const App: React.FC = () => {
     const delta = timestamp - lastMultiplierUpdateRef.current;
     lastMultiplierUpdateRef.current = timestamp;
 
-    setMultiplier(prev => {
-      if (prev <= 1.0) return 1.0;
-
+    const prev = multiplierValueRef.current;
+    if (prev > 1.0) {
       // Slower decay so multiplier is easier to build/maintain.
-      const decayFactor = 0.08 * (prev * 0.5); 
+      const decayFactor = 0.08 * (prev * 0.5);
       const drop = (delta / 1000) * decayFactor;
-      
-      return Math.max(1.0, prev - drop);
-    });
+      const next = Math.max(1.0, prev - drop);
+      updateMultiplierDisplay(next, false, timestamp);
+    } else {
+      updateMultiplierDisplay(1.0, false, timestamp);
+    }
 
     multiplierDecayRef.current = requestAnimationFrame(updateMultiplier);
-  }, [gameState, hasInteractionStarted]);
+  }, [gameState, hasInteractionStarted, updateMultiplierDisplay]);
 
   // Game Timer
   useEffect(() => {
@@ -766,7 +904,7 @@ const App: React.FC = () => {
     setTargets([]);
     setAiAnalysis(null);
     setFloatingTexts([]);
-    setMultiplier(1.0);
+    updateMultiplierDisplay(1.0, true);
     setActiveColorStreak(null);
     setCurrentStreakPoints(0);
     setBestStreakPoints(0);
@@ -787,6 +925,7 @@ const App: React.FC = () => {
       proRouteRef.current = [];
     }
     setGameState(GameState.PLAYING);
+    scheduleSpawnLayoutRecompute(0);
     spawnIfNeeded(); // Initial spawn
   };
 
@@ -829,7 +968,7 @@ const App: React.FC = () => {
 
     const isProMode = currentMode === 'Pro';
     let brokeStreak = activeColorStreak !== null && activeColorStreak !== color;
-    let baseMultiplier = brokeStreak ? 1.0 : multiplier;
+    let baseMultiplier = brokeStreak ? 1.0 : multiplierValueRef.current;
 
     if (isProMode) {
       let route = proRouteRef.current;
@@ -851,7 +990,7 @@ const App: React.FC = () => {
       if (!isCorrectShape) {
         audioService.playComboBreak();
         // Wrong icon in Pro mode immediately breaks the streak.
-        setMultiplier(1.0);
+        updateMultiplierDisplay(1.0, true);
         setCurrentStreakPoints(0);
         setActiveColorStreak(null);
         syncProQueueFromTargets(nextTargetsAfterHit.length > 0 ? nextTargetsAfterHit : targets);
@@ -882,7 +1021,7 @@ const App: React.FC = () => {
       syncProQueueFromTargets(nextTargetsAfterHit.length > 0 ? nextTargetsAfterHit : targets, remainingQueue);
 
       brokeStreak = false;
-      baseMultiplier = multiplier;
+      baseMultiplier = multiplierValueRef.current;
     }
 
     if (brokeStreak) {
@@ -919,7 +1058,7 @@ const App: React.FC = () => {
     }
 
     // Update Multiplier
-    setMultiplier(nextMultiplier);
+    updateMultiplierDisplay(nextMultiplier, true);
 
     // AUDIO BURST: Play sound 'burstCount' times rapidly.
     // If streak was broken, delay these slightly so break-sound is clearly heard first.
@@ -1062,6 +1201,13 @@ const App: React.FC = () => {
   const proBestRuns = fillToThree(getBestRunsForMode('Pro'));
   const proQueueIconSize = Math.max(32, Math.round(targetSizePx * PRO_QUEUE_ICON_SCALE));
   const proQueueIconSizeMobile = Math.max(24, Math.round(proQueueIconSize * 0.72));
+  const audioPoolSummary = useMemo(() => {
+    if (!audioPerfSnapshot) return '';
+    return Object.entries(audioPerfSnapshot.poolSizes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, count]) => `${name}:${count}`)
+      .join(' ');
+  }, [audioPerfSnapshot]);
 
   const toggleSound = () => {
     const muted = audioService.toggleMute();
@@ -1077,7 +1223,22 @@ const App: React.FC = () => {
   return (
     <div className="relative w-full h-screen bg-yellow-300 overflow-hidden select-none font-bold text-gray-900">
       
-      <div className="absolute inset-0 bg-pattern pointer-events-none"></div>
+      <div className={`absolute inset-0 bg-pattern pointer-events-none ${gameState === GameState.PLAYING && IS_COARSE_POINTER ? 'bg-pattern-lite' : ''}`}></div>
+
+      {PERF_DEBUG_ENABLED && (
+        <div className="absolute left-2 bottom-2 z-[120] pointer-events-none bg-black/80 text-white text-[10px] leading-tight rounded-md border border-white/30 px-2 py-1.5 font-mono whitespace-nowrap">
+          <div>
+            audio plays/s: {audioPerfSnapshot ? audioPerfSnapshot.playsPerSecond.toFixed(1) : '--'}
+            {' '}| steals/s: {audioPerfSnapshot ? audioPerfSnapshot.voiceStealsPerSecond.toFixed(1) : '--'}
+          </div>
+          <div>
+            spawn: {spawnPerfSnapshot ? `${spawnPerfSnapshot.width}x${spawnPerfSnapshot.height}` : '--'}
+            {' '}| bottom: {spawnPerfSnapshot ? spawnPerfSnapshot.maxSpawnBottom : '--'}
+            {' '}| zones: {spawnPerfSnapshot ? spawnPerfSnapshot.noSpawnZoneCount : '--'}
+          </div>
+          <div>{audioPoolSummary || 'pools: --'}</div>
+        </div>
+      )}
 
       {/* Header UI */}
       <div
@@ -1566,28 +1727,19 @@ const App: React.FC = () => {
         {floatingTexts.map(ft => (
           <div 
             key={ft.id}
-            className={`absolute font-black text-stroke pointer-events-none transition-all duration-700 ease-out ${ft.color}`}
+            className={`absolute font-black text-stroke pointer-events-none transition-all duration-700 ease-out animate-float-up ${ft.color}`}
             style={{ 
               left: ft.x, 
               top: ft.y,
               fontSize: `${2 + (ft.scale)}rem`, // Dynamic size based on multiplier
               transform: 'translate(-50%, -100%)',
               opacity: 0,
-              zIndex: 100,
-              animation: 'floatUp 0.8s forwards'
+              zIndex: 100
             }}
           >
             {ft.text}
           </div>
         ))}
-        
-        <style>{`
-          @keyframes floatUp {
-            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
-            50% { transform: translate(-50%, -150%) scale(1.2); opacity: 1; }
-            100% { transform: translate(-50%, -250%) scale(1); opacity: 0; }
-          }
-        `}</style>
       </div>
     </div>
   );
