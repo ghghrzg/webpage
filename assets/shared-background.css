@@ -1,7 +1,7 @@
 html.shared-bg-html {
-  --shared-theme-color: #111730;
+  --shared-theme-color: #7cffd1;
   -webkit-text-size-adjust: 100%;
-  background-color: var(--shared-bg0, #0b0d1a);
+  background-color: var(--shared-theme-color, #7cffd1);
   background:
     radial-gradient(circle at 20% 10%, #252a5a 0, transparent 55%),
     radial-gradient(circle at 80% 0%, #3a2f5a 0, transparent 50%),

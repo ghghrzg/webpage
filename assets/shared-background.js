@@ -40,6 +40,17 @@
     return tag;
   }
 
+  function setMetaThemeColor(themeColor) {
+    const tags = Array.from(document.head.querySelectorAll('meta[name="theme-color"]'));
+    if (tags.length === 0) {
+      ensureMetaTag("theme-color").setAttribute("content", themeColor);
+      return;
+    }
+    for (const tag of tags) {
+      tag.setAttribute("content", themeColor);
+    }
+  }
+
   function firstNonEmpty(...values) {
     for (const value of values) {
       if (typeof value === "string" && value.trim()) return value.trim();
@@ -60,10 +71,10 @@
       bodyStyles.getPropertyValue("--shared-theme-color"),
       bodyStyles.getPropertyValue("--shared-bg0"),
       bodyStyles.getPropertyValue("--bg0"),
-      "#111730"
+      "#7cffd1"
     );
 
-    ensureMetaTag("theme-color").setAttribute("content", themeColor);
+    setMetaThemeColor(themeColor);
   }
 
   function initSharedBackground(options = {}) {
