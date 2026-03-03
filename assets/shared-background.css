@@ -1,4 +1,5 @@
 html.shared-bg-html {
+  --shared-theme-color: #111730;
   -webkit-text-size-adjust: 100%;
   background-color: var(--shared-bg0, #0b0d1a);
   background:

@@ -606,6 +606,7 @@ layout: none
   let logoBusy = false;
   let logoAutoTimer = null;
   let logoAutoDueAt = 0;
+  let fixedAnchorsVisualViewport = null;
   const LOGO_AUTO_MAX_DELAY_MS = 10 * 60 * 1000;
   const LOGO_AUTO_RETRY_MS = 1000;
 
@@ -648,6 +649,51 @@ layout: none
     });
   }
 
+  function getViewportMetrics() {
+    const vv = window.visualViewport;
+    if (!vv) {
+      return {
+        offsetLeft: 0,
+        offsetTop: 0,
+        width: window.innerWidth,
+        height: window.innerHeight
+      };
+    }
+
+    return {
+      offsetLeft: Number.isFinite(vv.offsetLeft) ? vv.offsetLeft : 0,
+      offsetTop: Number.isFinite(vv.offsetTop) ? vv.offsetTop : 0,
+      width: Number.isFinite(vv.width) && vv.width > 0 ? vv.width : window.innerWidth,
+      height: Number.isFinite(vv.height) && vv.height > 0 ? vv.height : window.innerHeight
+    };
+  }
+
+  function doesFixedAnchorToVisualViewport() {
+    if (fixedAnchorsVisualViewport != null) return fixedAnchorsVisualViewport;
+    if (!window.visualViewport || !document.body) {
+      fixedAnchorsVisualViewport = true;
+      return fixedAnchorsVisualViewport;
+    }
+
+    const probe = document.createElement("div");
+    probe.style.position = "fixed";
+    probe.style.left = "0";
+    probe.style.top = "0";
+    probe.style.width = "0";
+    probe.style.height = "0";
+    probe.style.opacity = "0";
+    probe.style.pointerEvents = "none";
+    document.body.appendChild(probe);
+
+    const probeRect = probe.getBoundingClientRect();
+    probe.remove();
+    const tolerance = 0.75;
+    fixedAnchorsVisualViewport =
+      Math.abs(probeRect.left) <= tolerance &&
+      Math.abs(probeRect.top) <= tolerance;
+    return fixedAnchorsVisualViewport;
+  }
+
   async function runAutoHopWhenReady() {
     if (document.hidden || logoBusy) {
       logoAutoTimer = window.setTimeout(runAutoHopWhenReady, LOGO_AUTO_RETRY_MS);
@@ -670,22 +716,29 @@ layout: none
     if (!logoTrigger || logoBusy) return;
     logoBusy = true;
 
+    const viewport = getViewportMetrics();
+    const fixedIsVisual = doesFixedAnchorToVisualViewport();
+    const anchorOffsetX = fixedIsVisual ? 0 : viewport.offsetLeft;
+    const anchorOffsetY = fixedIsVisual ? 0 : viewport.offsetTop;
+
     const rect = logoTrigger.getBoundingClientRect();
     const flyer = logoTrigger.cloneNode(true);
     flyer.removeAttribute("id");
     flyer.removeAttribute("tabindex");
     flyer.removeAttribute("aria-label");
     flyer.classList.add("logo-flyer");
-    flyer.style.left = `${rect.left}px`;
-    flyer.style.top = `${rect.top}px`;
+    flyer.style.left = `${rect.left + anchorOffsetX}px`;
+    flyer.style.top = `${rect.top + anchorOffsetY}px`;
     document.body.appendChild(flyer);
     logoTrigger.style.visibility = "hidden";
 
     const shellRect = shell ? shell.getBoundingClientRect() : rect;
+    const startTop = rect.top + anchorOffsetY;
+    const shellTop = shellRect.top + anchorOffsetY;
     const drift = rand(-30, 30);
-    const offscreenY = window.innerHeight + 140;
-    const toBottom = offscreenY - rect.top;
-    const fullPeakY = Math.min(-235, shellRect.top - rect.top - rect.height - 34);
+    const offscreenY = viewport.height + anchorOffsetY + 140;
+    const toBottom = offscreenY - startTop;
+    const fullPeakY = Math.min(-235, shellTop - startTop - rect.height - 34);
     const basePeakY = fullPeakY * 0.5;
     const peakOffsetY = clamp(rand(-12, 12), -7, 7);
     const peakY = clamp((basePeakY + peakOffsetY) * 1.2, -163.2, -117.6);

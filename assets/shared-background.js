@@ -30,6 +30,42 @@
     body.style.setProperty(name, `${numeric}${unit}`);
   }
 
+  function ensureMetaTag(name) {
+    let tag = document.head.querySelector(`meta[name="${name}"]`);
+    if (!tag) {
+      tag = document.createElement("meta");
+      tag.setAttribute("name", name);
+      document.head.appendChild(tag);
+    }
+    return tag;
+  }
+
+  function firstNonEmpty(...values) {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return "";
+  }
+
+  function applyThemeColor(body, options) {
+    if (!document.head) return;
+
+    const rootStyles = getComputedStyle(document.documentElement);
+    const bodyStyles = getComputedStyle(body);
+    const themeColor = firstNonEmpty(
+      options.themeColor,
+      rootStyles.getPropertyValue("--shared-theme-color"),
+      rootStyles.getPropertyValue("--shared-bg0"),
+      rootStyles.getPropertyValue("--bg0"),
+      bodyStyles.getPropertyValue("--shared-theme-color"),
+      bodyStyles.getPropertyValue("--shared-bg0"),
+      bodyStyles.getPropertyValue("--bg0"),
+      "#111730"
+    );
+
+    ensureMetaTag("theme-color").setAttribute("content", themeColor);
+  }
+
   function initSharedBackground(options = {}) {
     const body = options.body || document.body;
     if (!body) return null;
@@ -51,6 +87,7 @@
     setBodyVar(body, "--shared-overlay-opacity-mobile", options.overlayOpacityMobile);
     setBodyVar(body, "--shared-cursor-opacity", options.cursorOpacity);
     setBodyVar(body, "--shared-cursor-size", options.cursorSize, "px");
+    applyThemeColor(body, options);
 
     if (glow && !glowHandlers.has(body)) {
       const onMouseMove = (event) => {

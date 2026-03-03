@@ -1,8 +1,9 @@
 type WaveKind = 'sine' | 'square' | 'sawtooth' | 'triangle';
 const OUTPUT_GAIN_MULTIPLIER = 1.5;
-const USE_HTML_MEDIA_ENGINE_EVERYWHERE = true;
+const USE_HTML_MEDIA_ENGINE_EVERYWHERE = false;
 const ENABLE_BACKGROUND_MUSIC = false;
 const GODLIKE_SCORE_THRESHOLD_DEFAULT = 20000;
+const GAMEOVER_MULTIPLIER_REFERENCE = 20;
 
 interface SequenceEvent {
   startMs: number;
@@ -59,7 +60,7 @@ class AudioService {
     440, 0, 392, 0, 440, 0, 523, 0,
   ];
 
-  // HTML media engine (preferred on iPhone/iPad for media volume path)
+  // HTML media engine (fallback path; primary engine is WebAudio when available)
   private readonly isAppleMobile: boolean;
   private readonly useHtmlMediaEngine: boolean;
   private htmlReady = false;
@@ -82,6 +83,8 @@ class AudioService {
   private readonly htmlBurstBudgetWindowMs = 140;
   private readonly htmlBurstBudgetPerWindowApple = 4;
   private readonly highFrequencyHtmlSamples = new Set(['pop', 'comboBoost', 'speedBonus']);
+  private iosPlaybackRouteAudio: HTMLAudioElement | null = null;
+  private silentLoopDataUri: string | null = null;
   private perfSnapshot: AudioPerfSnapshot = {
     timestamp: 0,
     playsPerSecond: 0,
@@ -94,9 +97,14 @@ class AudioService {
 
   constructor() {
     this.isAppleMobile = this.isAppleMobileDevice();
-    this.useHtmlMediaEngine = USE_HTML_MEDIA_ENGINE_EVERYWHERE || this.isAppleMobile;
+    this.useHtmlMediaEngine = USE_HTML_MEDIA_ENGINE_EVERYWHERE || !this.isWebAudioSupported();
     this.perfDebugEnabled = this.readPerfDebugFlag();
     this.startPerfTelemetry();
+  }
+
+  private isWebAudioSupported() {
+    if (typeof window === 'undefined') return false;
+    return !!(window.AudioContext || (window as any).webkitAudioContext);
   }
 
   private readPerfDebugFlag() {
@@ -165,10 +173,57 @@ class AudioService {
     return this.perfSnapshot;
   }
 
+  public isHtmlMediaEngineActive() {
+    return this.useHtmlMediaEngine;
+  }
+
   private isAppleMobileDevice() {
     const ua = navigator.userAgent || '';
     const touchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
     return /iPhone|iPad|iPod/i.test(ua) || touchMac;
+  }
+
+  private setPlaybackAudioSessionType() {
+    const navAny = navigator as Navigator & { audioSession?: { type?: string } };
+    try {
+      if (navAny.audioSession) {
+        navAny.audioSession.type = 'playback';
+      }
+    } catch {
+      // Best effort only.
+    }
+  }
+
+  private getSilentLoopDataUri() {
+    if (this.silentLoopDataUri) return this.silentLoopDataUri;
+    const sampleRate = 8000;
+    const samples = new Float32Array(Math.round(sampleRate * 0.12));
+    this.silentLoopDataUri = this.floatToWavDataUri(samples, sampleRate);
+    return this.silentLoopDataUri;
+  }
+
+  private async ensureApplePlaybackRoute() {
+    if (!this.isAppleMobile) return;
+    this.setPlaybackAudioSessionType();
+
+    if (!this.iosPlaybackRouteAudio) {
+      const routeAudio = new Audio(this.getSilentLoopDataUri());
+      routeAudio.loop = true;
+      routeAudio.preload = 'auto';
+      routeAudio.volume = 0.0001;
+      routeAudio.muted = false;
+      (routeAudio as HTMLAudioElement & { playsInline?: boolean; webkitPlaysInline?: boolean }).playsInline = true;
+      (routeAudio as HTMLAudioElement & { playsInline?: boolean; webkitPlaysInline?: boolean }).webkitPlaysInline = true;
+      this.iosPlaybackRouteAudio = routeAudio;
+    }
+
+    try {
+      if (this.iosPlaybackRouteAudio.paused) {
+        await this.iosPlaybackRouteAudio.play();
+      }
+    } catch {
+      // Older iOS can still block; keep best-effort behavior.
+    }
   }
 
   private ensureReady() {
@@ -740,18 +795,10 @@ class AudioService {
 
   public async resume() {
     this.ensureReady();
+    await this.ensureApplePlaybackRoute();
 
     if (this.useHtmlMediaEngine) {
       await this.initHtmlAssets();
-      const navAny = navigator as Navigator & { audioSession?: { type?: string } };
-      try {
-        if (navAny.audioSession) {
-          navAny.audioSession.type = 'playback';
-        }
-      } catch {
-        // Best effort only.
-      }
-
       if (this.htmlMusic) {
         this.htmlMusic.muted = this.isMuted;
         this.htmlMusic.volume = this.isMuted ? 0 : this.getHtmlMusicVolume();
@@ -823,23 +870,34 @@ class AudioService {
     }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'square';
     const normalized = this.getNormalizedMultiplier(level, maxLevel);
-    const freq = 440 + (normalized * 650);
-    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-    osc.frequency.linearRampToValueAtTime(freq + 140, this.ctx.currentTime + 0.1);
+    const now = this.ctx.currentTime;
+    const baseFreq = 430 + (normalized * 700);
 
-    gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.1);
+    const coreOsc = this.ctx.createOscillator();
+    const coreGain = this.ctx.createGain();
+    coreOsc.type = 'square';
+    coreOsc.frequency.setValueAtTime(baseFreq, now);
+    coreOsc.frequency.exponentialRampToValueAtTime(baseFreq * 1.18, now + 0.08);
+    coreGain.gain.setValueAtTime(this.scaleVolume(0.085), now);
+    coreGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+    coreOsc.connect(coreGain);
+    coreGain.connect(this.masterGain);
 
-    osc.connect(gain);
-    gain.connect(this.masterGain);
+    const topOsc = this.ctx.createOscillator();
+    const topGain = this.ctx.createGain();
+    topOsc.type = 'triangle';
+    topOsc.frequency.setValueAtTime(baseFreq * 2.01, now);
+    topOsc.frequency.exponentialRampToValueAtTime(baseFreq * 2.3, now + 0.06);
+    topGain.gain.setValueAtTime(this.scaleVolume(0.028), now);
+    topGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+    topOsc.connect(topGain);
+    topGain.connect(this.masterGain);
 
-    osc.start();
-    osc.stop(this.ctx.currentTime + 0.1);
+    coreOsc.start(now);
+    coreOsc.stop(now + 0.102);
+    topOsc.start(now);
+    topOsc.stop(now + 0.094);
   }
 
   public playSpeedBonus(level: number = 1, maxLevel: number = 20) {
@@ -850,23 +908,34 @@ class AudioService {
     }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sawtooth';
     const normalized = this.getNormalizedMultiplier(level, maxLevel);
-    const freq = 1200 + (normalized * 1250);
-    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(freq * 1.65, this.ctx.currentTime + 0.1);
+    const now = this.ctx.currentTime;
+    const baseFreq = 1080 + (normalized * 1320);
 
-    gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+    const leadOsc = this.ctx.createOscillator();
+    const leadGain = this.ctx.createGain();
+    leadOsc.type = 'sawtooth';
+    leadOsc.frequency.setValueAtTime(baseFreq, now);
+    leadOsc.frequency.exponentialRampToValueAtTime(baseFreq * 1.72, now + 0.085);
+    leadGain.gain.setValueAtTime(this.scaleVolume(0.062), now);
+    leadGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+    leadOsc.connect(leadGain);
+    leadGain.connect(this.masterGain);
 
-    osc.connect(gain);
-    gain.connect(this.masterGain);
+    const snapOsc = this.ctx.createOscillator();
+    const snapGain = this.ctx.createGain();
+    snapOsc.type = 'square';
+    snapOsc.frequency.setValueAtTime(baseFreq * 2.05, now);
+    snapOsc.frequency.exponentialRampToValueAtTime(baseFreq * 2.45, now + 0.05);
+    snapGain.gain.setValueAtTime(this.scaleVolume(0.018), now);
+    snapGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.062);
+    snapOsc.connect(snapGain);
+    snapGain.connect(this.masterGain);
 
-    osc.start();
-    osc.stop(this.ctx.currentTime + 0.1);
+    leadOsc.start(now);
+    leadOsc.stop(now + 0.102);
+    snapOsc.start(now);
+    snapOsc.stop(now + 0.066);
   }
 
   public playComboBreak() {
@@ -920,31 +989,61 @@ class AudioService {
     osc.stop(this.ctx.currentTime + 0.15);
   }
 
-  public playGameOverSound(finalScore: number = 0, godlikeThreshold: number = GODLIKE_SCORE_THRESHOLD_DEFAULT) {
+  public playGameOverSound(
+    finalScore: number = 0,
+    godlikeThreshold: number = GODLIKE_SCORE_THRESHOLD_DEFAULT,
+    finalMultiplier: number = 1
+  ) {
     this.ensureReady();
     const isGodlikeFinish = finalScore >= godlikeThreshold;
+    const normalizedMultiplier = this.getNormalizedMultiplier(finalMultiplier, GAMEOVER_MULTIPLIER_REFERENCE);
+    const transposeSemitones = isGodlikeFinish
+      ? Math.round(normalizedMultiplier * 6)
+      : Math.round(normalizedMultiplier * 3);
+    const transposeRate = Math.pow(2, transposeSemitones / 12);
+
     if (this.useHtmlMediaEngine) {
-      this.playHtmlSample(isGodlikeFinish ? 'gameOverGodlike' : 'gameOver');
+      this.playHtmlSample(isGodlikeFinish ? 'gameOverGodlike' : 'gameOver', transposeRate);
       return;
     }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
     const now = this.ctx.currentTime;
-    const notes = isGodlikeFinish ? [523, 659, 784, 988] : [440, 415, 392, 370];
+    const notes = isGodlikeFinish
+      ? [523, 659, 784, 988, 1174]
+      : [440, 415, 392, 370];
+    const noteSpacing = isGodlikeFinish ? 0.12 : 0.19;
 
     notes.forEach((freq, i) => {
-      const osc = this.ctx!.createOscillator();
-      const gain = this.ctx!.createGain();
-      osc.type = 'square';
-      osc.frequency.value = freq;
-      const start = now + i * (isGodlikeFinish ? 0.14 : 0.2);
-      const end = start + (isGodlikeFinish ? 0.18 : 0.15);
-      gain.gain.setValueAtTime(isGodlikeFinish ? 0.22 : 0.2, start);
-      gain.gain.linearRampToValueAtTime(0, end);
-      osc.connect(gain);
-      gain.connect(this.masterGain!);
-      osc.start(start);
-      osc.stop(end + 0.05);
+      const start = now + i * noteSpacing;
+      const duration = isGodlikeFinish ? (i === notes.length - 1 ? 0.26 : 0.16) : 0.16;
+      const pitchedFreq = Math.max(20, freq * transposeRate);
+      const end = start + duration;
+
+      const coreOsc = this.ctx!.createOscillator();
+      const coreGain = this.ctx!.createGain();
+      coreOsc.type = 'square';
+      coreOsc.frequency.setValueAtTime(pitchedFreq, start);
+      coreOsc.frequency.exponentialRampToValueAtTime(pitchedFreq * (isGodlikeFinish ? 1.035 : 1.015), end);
+      coreGain.gain.setValueAtTime(this.scaleVolume(isGodlikeFinish ? 0.16 : 0.14), start);
+      coreGain.gain.exponentialRampToValueAtTime(0.0001, end);
+      coreOsc.connect(coreGain);
+      coreGain.connect(this.masterGain!);
+
+      const sheenOsc = this.ctx!.createOscillator();
+      const sheenGain = this.ctx!.createGain();
+      sheenOsc.type = isGodlikeFinish ? 'triangle' : 'sine';
+      sheenOsc.frequency.setValueAtTime(pitchedFreq * 2.01, start);
+      sheenOsc.frequency.exponentialRampToValueAtTime(pitchedFreq * 2.08, end);
+      sheenGain.gain.setValueAtTime(this.scaleVolume(isGodlikeFinish ? 0.03 : 0.02), start);
+      sheenGain.gain.exponentialRampToValueAtTime(0.0001, end);
+      sheenOsc.connect(sheenGain);
+      sheenGain.connect(this.masterGain!);
+
+      coreOsc.start(start);
+      coreOsc.stop(end + 0.01);
+      sheenOsc.start(start);
+      sheenOsc.stop(end + 0.01);
     });
   }
 
@@ -1065,6 +1164,11 @@ class AudioService {
 
     if (this.isMuted) {
       this.stopMusic();
+      if (this.iosPlaybackRouteAudio) {
+        this.iosPlaybackRouteAudio.pause();
+      }
+    } else if (this.isAppleMobile) {
+      void this.ensureApplePlaybackRoute();
     }
 
     if (this.htmlMusic) {
