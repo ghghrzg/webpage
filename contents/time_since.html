@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <title>Time Since X</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" type="image/png" href="/lucsch_icon.png" />
+  <meta name="theme-color" content="#111730" />
   <link rel="stylesheet" href="/assets/shared-background.css" />
   <style>
     :root {
@@ -34,7 +35,11 @@
     }
 
     body {
-      padding: 2.5rem 1.5rem 3.5rem;
+      padding:
+        calc(2.5rem + env(safe-area-inset-top))
+        max(1.5rem, env(safe-area-inset-right))
+        calc(3.5rem + env(safe-area-inset-bottom))
+        max(1.5rem, env(safe-area-inset-left));
       display: flex;
       justify-content: center;
       overflow-x: hidden;
