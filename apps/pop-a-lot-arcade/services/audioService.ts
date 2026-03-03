@@ -1,42 +1,7 @@
-type WaveKind = 'sine' | 'square' | 'sawtooth' | 'triangle';
 const OUTPUT_GAIN_MULTIPLIER = 1.5;
-const USE_HTML_MEDIA_ENGINE_EVERYWHERE = false;
 const ENABLE_BACKGROUND_MUSIC = false;
 const GODLIKE_SCORE_THRESHOLD_DEFAULT = 20000;
 const GAMEOVER_MULTIPLIER_REFERENCE = 20;
-
-interface SequenceEvent {
-  startMs: number;
-  durationMs: number;
-  freqStart: number;
-  freqEnd?: number;
-  wave: WaveKind;
-  volume: number;
-  attackMs?: number;
-  releaseMs?: number;
-}
-
-type TimerSampleName = 'timerPing523' | 'timerPing660' | 'timerPing880' | 'timerPing987' | 'timerPing1174';
-
-interface RenderOptions {
-  filterHz?: number | null;
-  sampleRate?: number;
-}
-
-interface HtmlVoice {
-  audio: HTMLAudioElement;
-  lastStartAt: number;
-  estimatedBusyUntil: number;
-  lastRate: number;
-  lastVolume: number;
-}
-
-interface HtmlSampleMeta {
-  dataUri: string;
-  baseVolume: number;
-  fallbackDurationSec: number;
-  maxVoices: number;
-}
 
 export interface AudioPerfSnapshot {
   timestamp: number;
@@ -46,12 +11,11 @@ export interface AudioPerfSnapshot {
 }
 
 class AudioService {
-  // WebAudio engine (desktop/non-iOS fallback)
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
-  private nextNoteTime: number = 0;
+  private nextNoteTime = 0;
   private timerID: number | null = null;
-  private tempo: number = 100;
+  private tempo = 100;
   private currentNoteIndex = 0;
   private readonly melody = [
     392, 0, 440, 0, 392, 0, 523, 0,
@@ -60,15 +24,6 @@ class AudioService {
     440, 0, 392, 0, 440, 0, 523, 0,
   ];
 
-  // HTML media engine (fallback path; primary engine is WebAudio when available)
-  private readonly isAppleMobile: boolean;
-  private readonly useHtmlMediaEngine: boolean;
-  private htmlReady = false;
-  private htmlInitPromise: Promise<void> | null = null;
-  private readonly htmlSampleVoices = new Map<string, HtmlVoice[]>();
-  private readonly htmlSampleMeta = new Map<string, HtmlSampleMeta>();
-  private htmlMusic: HTMLAudioElement | null = null;
-  private readonly baseHtmlMusicVolume = 0.2;
   private readonly outputGainMultiplier = OUTPUT_GAIN_MULTIPLIER;
   private readonly perfDebugEnabled: boolean;
   private readonly perfCounters = {
@@ -78,13 +33,6 @@ class AudioService {
   private perfWindowStartMs = 0;
   private perfLastSnapshotAtMs = 0;
   private perfTickerId: number | null = null;
-  private htmlBurstBudgetWindowStartMs = 0;
-  private htmlBurstBudgetConsumed = 0;
-  private readonly htmlBurstBudgetWindowMs = 140;
-  private readonly htmlBurstBudgetPerWindowApple = 4;
-  private readonly highFrequencyHtmlSamples = new Set(['pop', 'comboBoost', 'speedBonus']);
-  private iosPlaybackRouteAudio: HTMLAudioElement | null = null;
-  private silentLoopDataUri: string | null = null;
   private perfSnapshot: AudioPerfSnapshot = {
     timestamp: 0,
     playsPerSecond: 0,
@@ -92,19 +40,12 @@ class AudioService {
     poolSizes: {},
   };
 
-  private isMuted: boolean = false;
-  private isMusicPlaying: boolean = false;
+  private isMuted = false;
+  private isMusicPlaying = false;
 
   constructor() {
-    this.isAppleMobile = this.isAppleMobileDevice();
-    this.useHtmlMediaEngine = USE_HTML_MEDIA_ENGINE_EVERYWHERE || !this.isWebAudioSupported();
     this.perfDebugEnabled = this.readPerfDebugFlag();
     this.startPerfTelemetry();
-  }
-
-  private isWebAudioSupported() {
-    if (typeof window === 'undefined') return false;
-    return !!(window.AudioContext || (window as any).webkitAudioContext);
   }
 
   private readPerfDebugFlag() {
@@ -144,16 +85,11 @@ class AudioService {
   private flushPerfSnapshot(nowMs: number = this.nowMs()) {
     if (!this.perfDebugEnabled) return;
     const elapsedMs = Math.max(1, nowMs - this.perfWindowStartMs);
-    const poolSizes: Record<string, number> = {};
-    this.htmlSampleVoices.forEach((voices, sampleName) => {
-      poolSizes[sampleName] = voices.length;
-    });
-
     this.perfSnapshot = {
       timestamp: Date.now(),
       playsPerSecond: (this.perfCounters.plays * 1000) / elapsedMs,
       voiceStealsPerSecond: (this.perfCounters.voiceSteals * 1000) / elapsedMs,
-      poolSizes,
+      poolSizes: {},
     };
     this.perfCounters.plays = 0;
     this.perfCounters.voiceSteals = 0;
@@ -167,6 +103,11 @@ class AudioService {
     (window as Window & { __popALotAudioPerf?: AudioPerfSnapshot }).__popALotAudioPerf = this.perfSnapshot;
   }
 
+  private notePlay() {
+    this.perfCounters.plays += 1;
+    this.maybeRefreshPerfSnapshot();
+  }
+
   public getPerfSnapshot(): AudioPerfSnapshot | null {
     if (!this.perfDebugEnabled) return null;
     this.maybeRefreshPerfSnapshot();
@@ -174,65 +115,10 @@ class AudioService {
   }
 
   public isHtmlMediaEngineActive() {
-    return this.useHtmlMediaEngine;
-  }
-
-  private isAppleMobileDevice() {
-    const ua = navigator.userAgent || '';
-    const touchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
-    return /iPhone|iPad|iPod/i.test(ua) || touchMac;
-  }
-
-  private setPlaybackAudioSessionType() {
-    const navAny = navigator as Navigator & { audioSession?: { type?: string } };
-    try {
-      if (navAny.audioSession) {
-        navAny.audioSession.type = 'playback';
-      }
-    } catch {
-      // Best effort only.
-    }
-  }
-
-  private getSilentLoopDataUri() {
-    if (this.silentLoopDataUri) return this.silentLoopDataUri;
-    const sampleRate = 8000;
-    const samples = new Float32Array(Math.round(sampleRate * 0.12));
-    this.silentLoopDataUri = this.floatToWavDataUri(samples, sampleRate);
-    return this.silentLoopDataUri;
-  }
-
-  private async ensureApplePlaybackRoute() {
-    if (!this.isAppleMobile) return;
-    this.setPlaybackAudioSessionType();
-
-    if (!this.iosPlaybackRouteAudio) {
-      const routeAudio = new Audio(this.getSilentLoopDataUri());
-      routeAudio.loop = true;
-      routeAudio.preload = 'auto';
-      routeAudio.volume = 0.0001;
-      routeAudio.muted = false;
-      (routeAudio as HTMLAudioElement & { playsInline?: boolean; webkitPlaysInline?: boolean }).playsInline = true;
-      (routeAudio as HTMLAudioElement & { playsInline?: boolean; webkitPlaysInline?: boolean }).webkitPlaysInline = true;
-      this.iosPlaybackRouteAudio = routeAudio;
-    }
-
-    try {
-      if (this.iosPlaybackRouteAudio.paused) {
-        await this.iosPlaybackRouteAudio.play();
-      }
-    } catch {
-      // Older iOS can still block; keep best-effort behavior.
-    }
+    return false;
   }
 
   private ensureReady() {
-    if (this.useHtmlMediaEngine) {
-      if (!this.htmlReady && !this.htmlInitPromise) {
-        void this.initHtmlAssets();
-      }
-      return;
-    }
     this.ensureWebAudioReady();
   }
 
@@ -250,345 +136,16 @@ class AudioService {
     }
   }
 
-  private async initHtmlAssets() {
-    if (this.htmlReady) return;
-    if (this.htmlInitPromise) return this.htmlInitPromise;
-
-    this.htmlInitPromise = this.buildHtmlAssets();
-    try {
-      await this.htmlInitPromise;
-    } finally {
-      this.htmlInitPromise = null;
-    }
-  }
-
-  private async buildHtmlAssets() {
-    try {
-      const [
-        pop,
-        comboBoost,
-        speedBonus,
-        comboBreak,
-        timerPing523,
-        timerPing660,
-        timerPing880,
-        timerPing987,
-        timerPing1174,
-        gameOver,
-        gameOverGodlike,
-        milestoneSmall,
-        milestoneBig,
-        musicLoop,
-      ] = await Promise.all([
-        this.renderSequenceSample([
-          { startMs: 0, durationMs: 105, freqStart: 320, freqEnd: 620, wave: 'sine', volume: 0.42, attackMs: 2, releaseMs: 95 },
-          { startMs: 0, durationMs: 96, freqStart: 640, freqEnd: 840, wave: 'sine', volume: 0.08, attackMs: 2, releaseMs: 80 },
-        ], 120, { filterHz: 5400 }),
-        this.renderSequenceSample([
-          // Closer to the old realtime boost timbre: square core + slight top layer.
-          { startMs: 0, durationMs: 108, freqStart: 440, freqEnd: 560, wave: 'square', volume: 0.18, attackMs: 2, releaseMs: 82 },
-          { startMs: 0, durationMs: 96, freqStart: 880, freqEnd: 980, wave: 'triangle', volume: 0.045, attackMs: 2, releaseMs: 70 },
-        ], 124, { filterHz: 3600 }),
-        this.renderSequenceSample([
-          // Old speed bonus character: fast bright saw ramp.
-          { startMs: 0, durationMs: 96, freqStart: 1180, freqEnd: 1980, wave: 'sawtooth', volume: 0.16, attackMs: 1, releaseMs: 74 },
-          { startMs: 0, durationMs: 84, freqStart: 2360, freqEnd: 3100, wave: 'triangle', volume: 0.05, attackMs: 1, releaseMs: 62 },
-        ], 110, { filterHz: 5800 }),
-        this.renderSequenceSample([
-          { startMs: 0, durationMs: 285, freqStart: 155, freqEnd: 90, wave: 'sawtooth', volume: 0.24, attackMs: 3, releaseMs: 220 },
-        ], 305, { filterHz: 1700 }),
-        this.renderTimerPingSample(523),
-        this.renderTimerPingSample(660),
-        this.renderTimerPingSample(880),
-        this.renderTimerPingSample(987),
-        this.renderTimerPingSample(1174),
-        this.renderSequenceSample([
-          { startMs: 0, durationMs: 165, freqStart: 440, wave: 'square', volume: 0.22, attackMs: 3, releaseMs: 125 },
-          { startMs: 200, durationMs: 165, freqStart: 415, wave: 'square', volume: 0.22, attackMs: 3, releaseMs: 125 },
-          { startMs: 400, durationMs: 165, freqStart: 392, wave: 'square', volume: 0.22, attackMs: 3, releaseMs: 125 },
-          { startMs: 600, durationMs: 165, freqStart: 370, wave: 'square', volume: 0.22, attackMs: 3, releaseMs: 125 },
-        ], 790, { filterHz: 2400 }),
-        this.renderSequenceSample([
-          { startMs: 0, durationMs: 130, freqStart: 523, freqEnd: 587, wave: 'square', volume: 0.22, attackMs: 2, releaseMs: 96 },
-          { startMs: 120, durationMs: 130, freqStart: 659, freqEnd: 698, wave: 'square', volume: 0.22, attackMs: 2, releaseMs: 96 },
-          { startMs: 240, durationMs: 145, freqStart: 784, freqEnd: 830, wave: 'square', volume: 0.24, attackMs: 2, releaseMs: 106 },
-          { startMs: 390, durationMs: 180, freqStart: 1046, freqEnd: 1174, wave: 'triangle', volume: 0.26, attackMs: 2, releaseMs: 130 },
-        ], 620, { filterHz: 4300 }),
-        this.renderSequenceSample([
-          { startMs: 0, durationMs: 68, freqStart: 440, wave: 'triangle', volume: 0.24, attackMs: 2, releaseMs: 50 },
-          { startMs: 82, durationMs: 68, freqStart: 587, wave: 'triangle', volume: 0.24, attackMs: 2, releaseMs: 50 },
-          { startMs: 164, durationMs: 68, freqStart: 831, wave: 'triangle', volume: 0.24, attackMs: 2, releaseMs: 50 },
-        ], 262, { filterHz: 4500 }),
-        this.renderSequenceSample([
-          { startMs: 0, durationMs: 68, freqStart: 523, wave: 'square', volume: 0.22, attackMs: 2, releaseMs: 50 },
-          { startMs: 82, durationMs: 68, freqStart: 698, wave: 'square', volume: 0.22, attackMs: 2, releaseMs: 50 },
-          { startMs: 164, durationMs: 68, freqStart: 988, wave: 'square', volume: 0.22, attackMs: 2, releaseMs: 50 },
-        ], 262, { filterHz: 3000 }),
-        this.renderMusicLoopSample(),
-      ]);
-
-      this.registerHtmlSample('pop', pop, 16, 0.5, 120, 30);
-      this.registerHtmlSample('comboBoost', comboBoost, 10, 0.3, 124, 24);
-      this.registerHtmlSample('speedBonus', speedBonus, 10, 0.25, 110, 24);
-      this.registerHtmlSample('comboBreak', comboBreak, 5, 0.34, 305, 12);
-      this.registerHtmlSample('timerPing523', timerPing523, 5, 0.3, 170, 10);
-      this.registerHtmlSample('timerPing660', timerPing660, 5, 0.3, 170, 10);
-      this.registerHtmlSample('timerPing880', timerPing880, 5, 0.3, 170, 10);
-      this.registerHtmlSample('timerPing987', timerPing987, 5, 0.3, 170, 10);
-      this.registerHtmlSample('timerPing1174', timerPing1174, 5, 0.3, 170, 10);
-      this.registerHtmlSample('gameOver', gameOver, 3, 0.3, 790, 6);
-      this.registerHtmlSample('gameOverGodlike', gameOverGodlike, 3, 0.32, 620, 6);
-      this.registerHtmlSample('milestoneSmall', milestoneSmall, 3, 0.28, 262, 8);
-      this.registerHtmlSample('milestoneBig', milestoneBig, 3, 0.3, 262, 8);
-
-      this.htmlMusic = new Audio(musicLoop);
-      this.htmlMusic.loop = true;
-      this.htmlMusic.preload = 'auto';
-      this.htmlMusic.volume = this.isMuted ? 0 : this.getHtmlMusicVolume();
-
-      this.htmlReady = true;
-    } catch (e) {
-      console.warn('Falling back to basic iOS audio samples', e);
-      this.buildFallbackHtmlAssets();
-      this.htmlReady = true;
-    }
-  }
-
-  private buildFallbackHtmlAssets() {
-    const pop = this.makeSequenceSampleFallback([
-      { startMs: 0, durationMs: 110, freqStart: 320, freqEnd: 620, wave: 'sine', volume: 0.45 },
-    ], 120);
-    this.registerHtmlSample('pop', pop, 14, 0.45, 120, 24);
-    this.registerHtmlSample('comboBoost', pop, 10, 0.2, 120, 20);
-    this.registerHtmlSample('speedBonus', pop, 10, 0.2, 120, 20);
-    this.registerHtmlSample('comboBreak', pop, 5, 0.3, 180, 10);
-    this.registerHtmlSample('timerPing523', pop, 5, 0.2, 180, 10);
-    this.registerHtmlSample('timerPing660', pop, 5, 0.2, 180, 10);
-    this.registerHtmlSample('timerPing880', pop, 5, 0.2, 180, 10);
-    this.registerHtmlSample('timerPing987', pop, 5, 0.2, 180, 10);
-    this.registerHtmlSample('timerPing1174', pop, 5, 0.2, 180, 10);
-    this.registerHtmlSample('gameOver', pop, 3, 0.22, 220, 6);
-    this.registerHtmlSample('gameOverGodlike', pop, 3, 0.24, 220, 6);
-    this.registerHtmlSample('milestoneSmall', pop, 3, 0.22, 180, 8);
-    this.registerHtmlSample('milestoneBig', pop, 3, 0.24, 180, 8);
-    this.htmlMusic = new Audio(pop);
-    this.htmlMusic.loop = true;
-    this.htmlMusic.preload = 'auto';
-    this.htmlMusic.volume = this.isMuted ? 0 : this.getHtmlMusicVolume();
-  }
-
-  private createHtmlVoice(meta: HtmlSampleMeta): HtmlVoice {
-    const audio = new Audio(meta.dataUri);
-    audio.preload = 'auto';
-    this.disablePitchCorrection(audio);
-    audio.volume = meta.baseVolume;
-    audio.load();
-    return {
-      audio,
-      lastStartAt: 0,
-      estimatedBusyUntil: 0,
-      lastRate: 1,
-      lastVolume: meta.baseVolume,
-    };
-  }
-
-  private registerHtmlSample(
-    name: string,
-    dataUri: string,
-    poolSize: number,
-    volume: number,
-    fallbackDurationMs: number = 180,
-    maxVoices: number = Math.max(poolSize + 2, Math.ceil(poolSize * 2.25))
-  ) {
-    const pool: HtmlVoice[] = [];
-    const scaledVolume = this.scaleVolume(volume);
-    const meta: HtmlSampleMeta = {
-      dataUri,
-      baseVolume: scaledVolume,
-      fallbackDurationSec: Math.max(0.02, fallbackDurationMs / 1000),
-      maxVoices: Math.max(poolSize, maxVoices),
-    };
-    for (let i = 0; i < poolSize; i += 1) {
-      pool.push(this.createHtmlVoice(meta));
-    }
-    this.htmlSampleMeta.set(name, meta);
-    this.htmlSampleVoices.set(name, pool);
-    this.maybeRefreshPerfSnapshot();
-  }
-
-  private disablePitchCorrection(audio: HTMLAudioElement) {
-    const media = audio as HTMLAudioElement & {
-      preservesPitch?: boolean;
-      mozPreservesPitch?: boolean;
-      webkitPreservesPitch?: boolean;
-    };
-
-    // Ensure playbackRate changes also change pitch on Safari/iOS/Firefox.
-    media.preservesPitch = false;
-    media.mozPreservesPitch = false;
-    media.webkitPreservesPitch = false;
-  }
-
   private scaleVolume(base: number) {
     return Math.max(0, Math.min(1, base * this.outputGainMultiplier));
   }
 
-  private getHtmlMusicVolume() {
-    return this.scaleVolume(this.baseHtmlMusicVolume);
-  }
-
-  private shouldThrottleHtmlSample(sampleName: string) {
-    if (!this.isAppleMobile || !this.highFrequencyHtmlSamples.has(sampleName)) {
-      return false;
-    }
-
-    const now = this.nowMs();
-    if (now - this.htmlBurstBudgetWindowStartMs > this.htmlBurstBudgetWindowMs) {
-      this.htmlBurstBudgetWindowStartMs = now;
-      this.htmlBurstBudgetConsumed = 0;
-    }
-
-    if (this.htmlBurstBudgetConsumed >= this.htmlBurstBudgetPerWindowApple) {
-      return true;
-    }
-
-    this.htmlBurstBudgetConsumed += 1;
-    return false;
-  }
-
-  private getHtmlVoiceDurationSec(sampleName: string, voice: HtmlVoice, playbackRate: number) {
-    const meta = this.htmlSampleMeta.get(sampleName);
-    const fallbackDuration = meta?.fallbackDurationSec ?? 0.18;
-    const rawDuration = Number.isFinite(voice.audio.duration) && voice.audio.duration > 0
-      ? voice.audio.duration
-      : fallbackDuration;
-    return Math.max(0.02, rawDuration / Math.max(0.5, playbackRate));
-  }
-
-  private selectHtmlVoice(sampleName: string): { voice: HtmlVoice; stoleVoice: boolean } | null {
-    const meta = this.htmlSampleMeta.get(sampleName);
-    const pool = this.htmlSampleVoices.get(sampleName);
-    if (!meta || !pool || pool.length === 0) return null;
-
-    const now = this.nowMs();
-    let freeVoice: HtmlVoice | null = null;
-    let stealCandidate: HtmlVoice | null = null;
-    let shortestRemainingMs = Number.POSITIVE_INFINITY;
-
-    for (const voice of pool) {
-      const remainingMs = voice.estimatedBusyUntil - now;
-      if (voice.audio.ended || voice.audio.paused || remainingMs <= 0) {
-        freeVoice = voice;
-        break;
-      }
-      if (remainingMs < shortestRemainingMs) {
-        shortestRemainingMs = remainingMs;
-        stealCandidate = voice;
-      }
-    }
-
-    if (freeVoice) {
-      return { voice: freeVoice, stoleVoice: false };
-    }
-
-    const canGrow = pool.length < meta.maxVoices;
-    if (canGrow && (shortestRemainingMs > 24 || !stealCandidate)) {
-      const freshVoice = this.createHtmlVoice(meta);
-      pool.push(freshVoice);
-      return { voice: freshVoice, stoleVoice: false };
-    }
-
-    if (stealCandidate) {
-      return { voice: stealCandidate, stoleVoice: true };
-    }
-
-    if (canGrow) {
-      const freshVoice = this.createHtmlVoice(meta);
-      pool.push(freshVoice);
-      return { voice: freshVoice, stoleVoice: false };
-    }
-
-    return null;
-  }
-
-  private playHtmlSample(name: string, playbackRate: number = 1) {
-    if (this.isMuted || !this.htmlReady) return;
-    if (this.shouldThrottleHtmlSample(name)) return;
-    const meta = this.htmlSampleMeta.get(name);
-    if (!meta) return;
-
-    const clampedRate = Math.max(0.5, Math.min(2.6, playbackRate));
-    const selected = this.selectHtmlVoice(name);
-    if (!selected) return;
-
-    const { voice, stoleVoice } = selected;
-    const audio = voice.audio;
-    if (stoleVoice) {
-      this.perfCounters.voiceSteals += 1;
-    }
-    if (!audio.paused) {
-      audio.pause();
-    }
-    audio.currentTime = 0;
-    if (Math.abs(voice.lastRate - clampedRate) > 0.001) {
-      audio.playbackRate = clampedRate;
-      voice.lastRate = clampedRate;
-    }
-    if (Math.abs(voice.lastVolume - meta.baseVolume) > 0.001) {
-      audio.volume = meta.baseVolume;
-      voice.lastVolume = meta.baseVolume;
-    }
-
-    const now = this.nowMs();
-    voice.lastStartAt = now;
-    voice.estimatedBusyUntil = now + (this.getHtmlVoiceDurationSec(name, voice, clampedRate) * 1000);
-    this.perfCounters.plays += 1;
-    this.maybeRefreshPerfSnapshot();
-
-    audio.play().catch(() => {
-      // Ignore blocked play errors before first user interaction.
-      voice.estimatedBusyUntil = this.nowMs();
-    });
-  }
-
-  private getOfflineAudioContextClass() {
-    return (window as any).OfflineAudioContext || (window as any).webkitOfflineAudioContext;
-  }
-
-  private renderTimerPingSample(freq: number) {
-    return this.renderSequenceSample([
-      { startMs: 0, durationMs: 145, freqStart: freq, freqEnd: freq * 1.01, wave: 'sine', volume: 0.3, attackMs: 2, releaseMs: 118 },
-      { startMs: 0, durationMs: 115, freqStart: freq * 2, wave: 'triangle', volume: 0.05, attackMs: 2, releaseMs: 92 },
-    ], 170, { filterHz: 5000 });
-  }
-
-  private getTimerPingTone(secondsLeft: number): { freq: number; sampleName: TimerSampleName } {
-    if (secondsLeft <= 1) return { freq: 1174, sampleName: 'timerPing1174' };
-    if (secondsLeft === 2) return { freq: 987, sampleName: 'timerPing987' };
-    if (secondsLeft === 3) return { freq: 880, sampleName: 'timerPing880' };
-    if (secondsLeft <= 5) return { freq: 660, sampleName: 'timerPing660' };
-    return { freq: 523, sampleName: 'timerPing523' };
-  }
-
-  private getComboBoostPlaybackRate(level: number, maxLevel: number) {
-    const semitoneStep = this.getSemitoneStepFromLevel(level, maxLevel, 0, 22);
-    return this.semitoneStepToRate(semitoneStep);
-  }
-
-  private getSpeedBonusPlaybackRate(level: number, maxLevel: number) {
-    const semitoneStep = this.getSemitoneStepFromLevel(level, maxLevel, 2, 24);
-    return this.semitoneStepToRate(semitoneStep);
-  }
-
-  private getSemitoneStepFromLevel(
-    level: number,
-    maxLevel: number,
-    offset: number,
-    maxSemitoneStep: number
-  ) {
-    const normalized = this.getNormalizedMultiplier(level, maxLevel);
-    const step = Math.round(normalized * (maxSemitoneStep - offset)) + offset;
-    return Math.max(0, Math.min(maxSemitoneStep, step));
+  private getTimerPingTone(secondsLeft: number): number {
+    if (secondsLeft <= 1) return 1174;
+    if (secondsLeft === 2) return 987;
+    if (secondsLeft === 3) return 880;
+    if (secondsLeft <= 5) return 660;
+    return 523;
   }
 
   private getNormalizedMultiplier(level: number, maxLevel: number) {
@@ -598,213 +155,8 @@ class AudioService {
     return Math.max(0, Math.min(1, (safeLevel - 1) / (safeMaxLevel - 1)));
   }
 
-  private semitoneStepToRate(semitoneStep: number) {
-    return Math.max(0.75, Math.min(2.35, Math.pow(2, semitoneStep / 12)));
-  }
-
-  private async renderMusicLoopSample() {
-    const secondsPerBeat = 60 / this.tempo;
-    const stepMs = secondsPerBeat * 0.25 * 1000;
-    const events: SequenceEvent[] = [];
-
-    this.melody.forEach((freq, index) => {
-      if (freq <= 0) return;
-      const startMs = index * stepMs;
-      events.push({
-        startMs,
-        durationMs: stepMs * 0.95,
-        freqStart: freq,
-        freqEnd: freq * 1.01,
-        wave: 'sine',
-        volume: 0.12,
-        attackMs: 6,
-        releaseMs: stepMs * 0.6,
-      });
-      events.push({
-        startMs,
-        durationMs: stepMs * 0.8,
-        freqStart: freq * 2,
-        freqEnd: freq * 2.02,
-        wave: 'triangle',
-        volume: 0.03,
-        attackMs: 4,
-        releaseMs: stepMs * 0.5,
-      });
-    });
-
-    const totalMs = (this.melody.length * stepMs) + 30;
-    return this.renderSequenceSample(events, totalMs, { filterHz: 5400, sampleRate: 44100 });
-  }
-
-  private async renderSequenceSample(events: SequenceEvent[], totalMs: number, options: RenderOptions = {}) {
-    const OfflineAudioContextClass = this.getOfflineAudioContextClass();
-    if (!OfflineAudioContextClass) {
-      return this.makeSequenceSampleFallback(events, totalMs);
-    }
-
-    const sampleRate = options.sampleRate ?? 44100;
-    const frames = Math.max(1, Math.ceil((totalMs / 1000) * sampleRate));
-    const ctx = new OfflineAudioContextClass(1, frames, sampleRate) as OfflineAudioContext;
-
-    for (const event of events) {
-      const startSec = event.startMs / 1000;
-      const endSec = (event.startMs + event.durationMs) / 1000;
-      const osc = ctx.createOscillator();
-      osc.type = event.wave;
-      osc.frequency.setValueAtTime(Math.max(20, event.freqStart), startSec);
-      if (event.freqEnd && event.freqEnd !== event.freqStart) {
-        osc.frequency.exponentialRampToValueAtTime(Math.max(20, event.freqEnd), endSec);
-      }
-
-      const gain = ctx.createGain();
-      const peak = Math.max(0.0001, Math.min(1, event.volume));
-      const attackSec = Math.max(0.001, (event.attackMs ?? Math.min(16, event.durationMs * 0.1)) / 1000);
-      const releaseSec = Math.max(0.001, (event.releaseMs ?? Math.min(event.durationMs * 0.65, event.durationMs - 4)) / 1000);
-      const releaseStartSec = Math.max(startSec + attackSec + 0.003, endSec - releaseSec);
-
-      gain.gain.setValueAtTime(0.0001, startSec);
-      gain.gain.exponentialRampToValueAtTime(peak, startSec + attackSec);
-      gain.gain.setValueAtTime(peak, releaseStartSec);
-      gain.gain.exponentialRampToValueAtTime(0.0001, endSec);
-
-      if (options.filterHz && options.filterHz > 0) {
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(options.filterHz, startSec);
-        osc.connect(filter);
-        filter.connect(gain);
-      } else {
-        osc.connect(gain);
-      }
-      gain.connect(ctx.destination);
-
-      osc.start(startSec);
-      osc.stop(endSec + 0.003);
-    }
-
-    const buffer = await ctx.startRendering();
-    return this.audioBufferToWavDataUri(buffer);
-  }
-
-  private audioBufferToWavDataUri(buffer: AudioBuffer) {
-    const samples = buffer.getChannelData(0);
-    return this.floatToWavDataUri(samples, buffer.sampleRate);
-  }
-
-  private makeSequenceSampleFallback(events: SequenceEvent[], totalMs: number) {
-    const sampleRate = 32000;
-    const totalSamples = Math.max(1, Math.round((totalMs / 1000) * sampleRate));
-    const data = new Float32Array(totalSamples);
-
-    events.forEach((event) => {
-      const startSample = Math.max(0, Math.round((event.startMs / 1000) * sampleRate));
-      const eventSamples = Math.max(1, Math.round((event.durationMs / 1000) * sampleRate));
-      const attackSamples = Math.max(1, Math.round(((event.attackMs ?? Math.min(16, event.durationMs * 0.1)) / 1000) * sampleRate));
-      const releaseSamples = Math.max(1, Math.round(((event.releaseMs ?? Math.min(event.durationMs * 0.65, event.durationMs - 4)) / 1000) * sampleRate));
-      let phase = 0;
-
-      for (let i = 0; i < eventSamples; i += 1) {
-        const globalI = startSample + i;
-        if (globalI >= totalSamples) break;
-        const t = i / Math.max(1, eventSamples - 1);
-        const freqEnd = event.freqEnd ?? event.freqStart;
-        const freq = event.freqStart + ((freqEnd - event.freqStart) * t);
-        phase += (2 * Math.PI * freq) / sampleRate;
-        const wave = this.waveAtPhase(event.wave, phase);
-        const env = this.envelopeAtSample(i, eventSamples, attackSamples, releaseSamples);
-        data[globalI] += wave * env * event.volume;
-      }
-    });
-
-    for (let i = 0; i < data.length; i += 1) {
-      if (data[i] > 1) data[i] = 1;
-      if (data[i] < -1) data[i] = -1;
-    }
-
-    return this.floatToWavDataUri(data, sampleRate);
-  }
-
-  private envelopeAtSample(i: number, totalSamples: number, attackSamples: number, releaseSamples: number) {
-    const attack = Math.min(1, i / attackSamples);
-    const releaseStart = Math.max(0, totalSamples - releaseSamples);
-    const release = i < releaseStart ? 1 : Math.max(0, (totalSamples - i) / releaseSamples);
-    return Math.min(attack, release);
-  }
-
-  private waveAtPhase(wave: WaveKind, phase: number) {
-    switch (wave) {
-      case 'square':
-        return Math.sign(Math.sin(phase)) || 1;
-      case 'sawtooth': {
-        const wrapped = phase % (2 * Math.PI);
-        return (wrapped / Math.PI) - 1;
-      }
-      case 'triangle':
-        return (2 / Math.PI) * Math.asin(Math.sin(phase));
-      case 'sine':
-      default:
-        return Math.sin(phase);
-    }
-  }
-
-  private floatToWavDataUri(samples: Float32Array, sampleRate: number) {
-    const numChannels = 1;
-    const bytesPerSample = 2;
-    const blockAlign = numChannels * bytesPerSample;
-    const byteRate = sampleRate * blockAlign;
-    const dataSize = samples.length * bytesPerSample;
-    const buffer = new ArrayBuffer(44 + dataSize);
-    const view = new DataView(buffer);
-
-    const writeString = (offset: number, value: string) => {
-      for (let i = 0; i < value.length; i += 1) {
-        view.setUint8(offset + i, value.charCodeAt(i));
-      }
-    };
-
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + dataSize, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, 16, true);
-    writeString(36, 'data');
-    view.setUint32(40, dataSize, true);
-
-    let offset = 44;
-    for (let i = 0; i < samples.length; i += 1) {
-      const s = Math.max(-1, Math.min(1, samples[i]));
-      const pcm = s < 0 ? s * 0x8000 : s * 0x7fff;
-      view.setInt16(offset, pcm, true);
-      offset += 2;
-    }
-
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 1) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-
-    return `data:audio/wav;base64,${btoa(binary)}`;
-  }
-
   public async resume() {
     this.ensureReady();
-    await this.ensureApplePlaybackRoute();
-
-    if (this.useHtmlMediaEngine) {
-      await this.initHtmlAssets();
-      if (this.htmlMusic) {
-        this.htmlMusic.muted = this.isMuted;
-        this.htmlMusic.volume = this.isMuted ? 0 : this.getHtmlMusicVolume();
-      }
-      return;
-    }
 
     if (this.ctx?.state === 'suspended') {
       await this.ctx.resume();
@@ -813,10 +165,6 @@ class AudioService {
 
   public playPopSound(pitchMultiplier: number = 1) {
     this.ensureReady();
-    if (this.useHtmlMediaEngine) {
-      this.playHtmlSample('pop', Math.max(0.65, Math.min(2.2, pitchMultiplier)));
-      return;
-    }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
     const osc = this.ctx.createOscillator();
@@ -835,14 +183,11 @@ class AudioService {
 
     osc.start();
     osc.stop(this.ctx.currentTime + 0.1);
+    this.notePlay();
   }
 
   public playStartSound() {
     this.ensureReady();
-    if (this.useHtmlMediaEngine) {
-      this.playHtmlSample('milestoneSmall', 1.04);
-      return;
-    }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
     const now = this.ctx.currentTime;
@@ -860,14 +205,11 @@ class AudioService {
       osc.start(start);
       osc.stop(start + 0.085);
     });
+    this.notePlay();
   }
 
   public playComboBoost(level: number, maxLevel: number = 20) {
     this.ensureReady();
-    if (this.useHtmlMediaEngine) {
-      this.playHtmlSample('comboBoost', this.getComboBoostPlaybackRate(level, maxLevel));
-      return;
-    }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
     const normalized = this.getNormalizedMultiplier(level, maxLevel);
@@ -898,14 +240,11 @@ class AudioService {
     coreOsc.stop(now + 0.102);
     topOsc.start(now);
     topOsc.stop(now + 0.094);
+    this.notePlay();
   }
 
   public playSpeedBonus(level: number = 1, maxLevel: number = 20) {
     this.ensureReady();
-    if (this.useHtmlMediaEngine) {
-      this.playHtmlSample('speedBonus', this.getSpeedBonusPlaybackRate(level, maxLevel));
-      return;
-    }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
     const normalized = this.getNormalizedMultiplier(level, maxLevel);
@@ -936,14 +275,11 @@ class AudioService {
     leadOsc.stop(now + 0.102);
     snapOsc.start(now);
     snapOsc.stop(now + 0.066);
+    this.notePlay();
   }
 
   public playComboBreak() {
     this.ensureReady();
-    if (this.useHtmlMediaEngine) {
-      this.playHtmlSample('comboBreak');
-      return;
-    }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
     const osc = this.ctx.createOscillator();
@@ -961,22 +297,18 @@ class AudioService {
 
     osc.start();
     osc.stop(this.ctx.currentTime + 0.3);
+    this.notePlay();
   }
 
   public playTimerPing(secondsLeft: number) {
     this.ensureReady();
-    const { freq, sampleName } = this.getTimerPingTone(secondsLeft);
-    if (this.useHtmlMediaEngine) {
-      this.playHtmlSample(sampleName, 1);
-      return;
-    }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
+    const freq = this.getTimerPingTone(secondsLeft);
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
     osc.type = 'sine';
-
     osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
 
     gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
@@ -987,6 +319,7 @@ class AudioService {
 
     osc.start();
     osc.stop(this.ctx.currentTime + 0.15);
+    this.notePlay();
   }
 
   public playGameOverSound(
@@ -995,18 +328,14 @@ class AudioService {
     finalMultiplier: number = 1
   ) {
     this.ensureReady();
+    if (!this.ctx || !this.masterGain || this.isMuted) return;
+
     const isGodlikeFinish = finalScore >= godlikeThreshold;
     const normalizedMultiplier = this.getNormalizedMultiplier(finalMultiplier, GAMEOVER_MULTIPLIER_REFERENCE);
     const transposeSemitones = isGodlikeFinish
       ? Math.round(normalizedMultiplier * 6)
       : Math.round(normalizedMultiplier * 3);
     const transposeRate = Math.pow(2, transposeSemitones / 12);
-
-    if (this.useHtmlMediaEngine) {
-      this.playHtmlSample(isGodlikeFinish ? 'gameOverGodlike' : 'gameOver', transposeRate);
-      return;
-    }
-    if (!this.ctx || !this.masterGain || this.isMuted) return;
 
     const now = this.ctx.currentTime;
     const notes = isGodlikeFinish
@@ -1045,14 +374,11 @@ class AudioService {
       sheenOsc.start(start);
       sheenOsc.stop(end + 0.01);
     });
+    this.notePlay();
   }
 
   public playMultiplierMilestone(multiplierValue: number) {
     this.ensureReady();
-    if (this.useHtmlMediaEngine) {
-      this.playHtmlSample(multiplierValue >= 20 ? 'milestoneBig' : 'milestoneSmall');
-      return;
-    }
     if (!this.ctx || !this.masterGain || this.isMuted) return;
 
     const now = this.ctx.currentTime;
@@ -1076,6 +402,7 @@ class AudioService {
       osc.start(start);
       osc.stop(start + 0.07);
     });
+    this.notePlay();
   }
 
   public startMusic() {
@@ -1085,20 +412,8 @@ class AudioService {
     }
 
     this.ensureReady();
-    if (this.isMuted || this.isMusicPlaying) return;
+    if (this.isMuted || this.isMusicPlaying || !this.ctx) return;
 
-    if (this.useHtmlMediaEngine) {
-      if (!this.htmlMusic || !this.htmlReady) return;
-      this.isMusicPlaying = true;
-      this.htmlMusic.muted = false;
-      this.htmlMusic.volume = this.getHtmlMusicVolume();
-      this.htmlMusic.play().catch(() => {
-        this.isMusicPlaying = false;
-      });
-      return;
-    }
-
-    if (!this.ctx) return;
     this.isMusicPlaying = true;
     this.nextNoteTime = this.ctx.currentTime;
     this.scheduler();
@@ -1106,13 +421,6 @@ class AudioService {
 
   public stopMusic() {
     this.isMusicPlaying = false;
-
-    if (this.useHtmlMediaEngine) {
-      if (this.htmlMusic) {
-        this.htmlMusic.pause();
-      }
-      return;
-    }
 
     if (this.timerID) {
       window.clearTimeout(this.timerID);
@@ -1135,22 +443,21 @@ class AudioService {
     if (!this.masterGain || !this.ctx) return;
 
     const freq = this.melody[this.currentNoteIndex % this.melody.length];
+    if (freq <= 0) return;
 
-    if (freq > 0) {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
 
-      gain.gain.setValueAtTime(0, time);
-      gain.gain.linearRampToValueAtTime(0.05, time + 0.05);
-      gain.gain.linearRampToValueAtTime(0, time + 0.2);
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(0.05, time + 0.05);
+    gain.gain.linearRampToValueAtTime(0, time + 0.2);
 
-      osc.connect(gain);
-      gain.connect(this.masterGain);
-      osc.start(time);
-      osc.stop(time + 0.25);
-    }
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(time);
+    osc.stop(time + 0.25);
   }
 
   private advanceNote() {
@@ -1164,16 +471,6 @@ class AudioService {
 
     if (this.isMuted) {
       this.stopMusic();
-      if (this.iosPlaybackRouteAudio) {
-        this.iosPlaybackRouteAudio.pause();
-      }
-    } else if (this.isAppleMobile) {
-      void this.ensureApplePlaybackRoute();
-    }
-
-    if (this.htmlMusic) {
-      this.htmlMusic.muted = this.isMuted;
-      this.htmlMusic.volume = this.isMuted ? 0 : this.getHtmlMusicVolume();
     }
 
     return this.isMuted;
