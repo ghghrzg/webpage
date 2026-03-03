@@ -18,6 +18,10 @@ const PRO_QUEUE_ICON_SCALE = 0.75;
 const SHOW_SPAWN_DEBUG_FRAME = false;
 const MULTIPLIER_UI_MAX_HZ = 30;
 const MULTIPLIER_UI_MIN_STEP = 0.02;
+const BURST_AUDIO_MAX_STEPS_TOUCH = 3;
+const BURST_AUDIO_MAX_STEPS_DESKTOP = 6;
+const BURST_AUDIO_STEP_MS_TOUCH = 42;
+const BURST_AUDIO_STEP_MS_DESKTOP = 52;
 
 const isPerfDebugEnabled = () => {
   if (typeof window === 'undefined') return false;
@@ -1063,15 +1067,26 @@ const App: React.FC = () => {
     // AUDIO BURST: Play sound 'burstCount' times rapidly.
     // If streak was broken, delay these slightly so break-sound is clearly heard first.
     const burstStartDelay = brokeStreak ? 120 : 0;
-    for (let i = 0; i < burstCount; i++) {
+    const maxBurstAudioSteps = IS_COARSE_POINTER ? BURST_AUDIO_MAX_STEPS_TOUCH : BURST_AUDIO_MAX_STEPS_DESKTOP;
+    const burstAudioSteps = burstCount <= 1
+      ? 1
+      : Math.max(1, Math.min(maxBurstAudioSteps, Math.ceil(Math.sqrt(burstCount))));
+    const burstAudioStepMs = IS_COARSE_POINTER ? BURST_AUDIO_STEP_MS_TOUCH : BURST_AUDIO_STEP_MS_DESKTOP;
+
+    for (let i = 0; i < burstAudioSteps; i++) {
       setTimeout(() => {
-        const soundLevel = burstPitchLevels[i] ?? nextMultiplier;
+        const progress = burstAudioSteps <= 1 ? 1 : i / (burstAudioSteps - 1);
+        const burstLevelIndex = Math.max(
+          0,
+          Math.min(burstPitchLevels.length - 1, Math.round(progress * (burstPitchLevels.length - 1)))
+        );
+        const soundLevel = burstPitchLevels[burstLevelIndex] ?? nextMultiplier;
         if (isRapidClick) {
           audioService.playSpeedBonus(soundLevel, MULTIPLIER_CAP);
         } else {
           audioService.playComboBoost(soundLevel, MULTIPLIER_CAP);
         }
-      }, burstStartDelay + (i * 60));
+      }, burstStartDelay + (i * burstAudioStepMs));
     }
 
     // Update Max Mult Stat

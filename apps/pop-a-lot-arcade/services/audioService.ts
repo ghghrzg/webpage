@@ -60,6 +60,7 @@ class AudioService {
   ];
 
   // HTML media engine (preferred on iPhone/iPad for media volume path)
+  private readonly isAppleMobile: boolean;
   private readonly useHtmlMediaEngine: boolean;
   private htmlReady = false;
   private htmlInitPromise: Promise<void> | null = null;
@@ -76,6 +77,11 @@ class AudioService {
   private perfWindowStartMs = 0;
   private perfLastSnapshotAtMs = 0;
   private perfTickerId: number | null = null;
+  private htmlBurstBudgetWindowStartMs = 0;
+  private htmlBurstBudgetConsumed = 0;
+  private readonly htmlBurstBudgetWindowMs = 140;
+  private readonly htmlBurstBudgetPerWindowApple = 4;
+  private readonly highFrequencyHtmlSamples = new Set(['pop', 'comboBoost', 'speedBonus']);
   private perfSnapshot: AudioPerfSnapshot = {
     timestamp: 0,
     playsPerSecond: 0,
@@ -87,7 +93,8 @@ class AudioService {
   private isMusicPlaying: boolean = false;
 
   constructor() {
-    this.useHtmlMediaEngine = USE_HTML_MEDIA_ENGINE_EVERYWHERE || this.isAppleMobileDevice();
+    this.isAppleMobile = this.isAppleMobileDevice();
+    this.useHtmlMediaEngine = USE_HTML_MEDIA_ENGINE_EVERYWHERE || this.isAppleMobile;
     this.perfDebugEnabled = this.readPerfDebugFlag();
     this.startPerfTelemetry();
   }
@@ -375,6 +382,25 @@ class AudioService {
     return this.scaleVolume(this.baseHtmlMusicVolume);
   }
 
+  private shouldThrottleHtmlSample(sampleName: string) {
+    if (!this.isAppleMobile || !this.highFrequencyHtmlSamples.has(sampleName)) {
+      return false;
+    }
+
+    const now = this.nowMs();
+    if (now - this.htmlBurstBudgetWindowStartMs > this.htmlBurstBudgetWindowMs) {
+      this.htmlBurstBudgetWindowStartMs = now;
+      this.htmlBurstBudgetConsumed = 0;
+    }
+
+    if (this.htmlBurstBudgetConsumed >= this.htmlBurstBudgetPerWindowApple) {
+      return true;
+    }
+
+    this.htmlBurstBudgetConsumed += 1;
+    return false;
+  }
+
   private getHtmlVoiceDurationSec(sampleName: string, voice: HtmlVoice, playbackRate: number) {
     const meta = this.htmlSampleMeta.get(sampleName);
     const fallbackDuration = meta?.fallbackDurationSec ?? 0.18;
@@ -432,6 +458,7 @@ class AudioService {
 
   private playHtmlSample(name: string, playbackRate: number = 1) {
     if (this.isMuted || !this.htmlReady) return;
+    if (this.shouldThrottleHtmlSample(name)) return;
     const meta = this.htmlSampleMeta.get(name);
     if (!meta) return;
 
