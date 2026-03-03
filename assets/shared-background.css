@@ -1,11 +1,33 @@
 html.shared-bg-html {
   --shared-theme-color: #7cffd1;
   -webkit-text-size-adjust: 100%;
+  color-scheme: dark;
   background-color: var(--shared-theme-color, #7cffd1);
   background:
     radial-gradient(circle at 20% 10%, #252a5a 0, transparent 55%),
     radial-gradient(circle at 80% 0%, #3a2f5a 0, transparent 50%),
     linear-gradient(140deg, var(--shared-bg0, #0b0d1a), var(--shared-bg1, #14162b) 55%, var(--shared-bg2, #1d1f39));
+}
+
+html.shared-bg-html::before,
+html.shared-bg-html::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  background: var(--shared-theme-color, #7cffd1);
+  z-index: 2;
+}
+
+html.shared-bg-html::before {
+  top: 0;
+  height: env(safe-area-inset-top);
+}
+
+html.shared-bg-html::after {
+  bottom: 0;
+  height: env(safe-area-inset-bottom);
 }
 
 body.shared-bg-body {
