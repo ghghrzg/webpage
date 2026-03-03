@@ -5,14 +5,24 @@ import { audioService } from './services/audioService';
 import { getGameCommentary, GameCommentary } from './services/commentaryService';
 import TargetButton from './components/TargetButton';
 import ShapePreview from './components/ShapePreview';
-import { Volume2, VolumeX, Play, Zap, RotateCcw, History, Home, Trophy } from 'lucide-react';
+import { Volume2, VolumeX, Play, Zap, RotateCcw, History, Home, Trophy, X } from 'lucide-react';
 
 const RUN_HISTORY_KEY = 'pop-a-lot-run-history-v1';
+const MUTE_STATE_KEY = 'pop-a-lot-muted-v1';
 const MAX_RUN_HISTORY = 30;
 const MULTIPLIER_CAP = 20;
 const MULTIPLIER_ANNOUNCE_STEP = 10;
+const GODLIKE_SCORE_THRESHOLD = 20000;
 const PRO_QUEUE_LENGTH = 3;
 const PRO_QUEUE_ICON_SCALE = 0.75;
+const SHOW_SPAWN_DEBUG_FRAME = false;
+
+type SpawnDebugRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
 
 function loadRunHistoryFromStorage(): RunHistoryItem[] {
   if (typeof window === 'undefined') return [];
@@ -49,6 +59,15 @@ function saveRunHistoryToStorage(runHistory: RunHistoryItem[]) {
   }
 }
 
+function loadMutedStateFromStorage(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(MUTE_STATE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 const App: React.FC = () => {
   // Game Configuration
   const [currentMode, setCurrentMode] = useState<GameMode>('Arcade');
@@ -61,6 +80,7 @@ const App: React.FC = () => {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
   const [targets, setTargets] = useState<Target[]>([]);
+  const [spawnDebugRect, setSpawnDebugRect] = useState<SpawnDebugRect | null>(null);
   const [runHistory, setRunHistory] = useState<RunHistoryItem[]>(() => loadRunHistoryFromStorage());
   const [proRoute, setProRoute] = useState<Shape[]>([]);
   
@@ -80,7 +100,7 @@ const App: React.FC = () => {
   });
   const lastClickTimeRef = useRef<number>(0);
   
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState<boolean>(() => loadMutedStateFromStorage());
   const [aiAnalysis, setAiAnalysis] = useState<GameCommentary | null>(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   
@@ -90,8 +110,20 @@ const App: React.FC = () => {
   const multiplierDecayRef = useRef<number | null>(null);
   const lastMultiplierUpdateRef = useRef<number>(0);
   const timeLeftRef = useRef<number>(GAME_DURATION);
+  const scoreRef = useRef<number>(0);
   const gameOverHandledRef = useRef(false);
   const gameContainerRef = useRef<HTMLDivElement>(null);
+  const scorePanelDesktopRef = useRef<HTMLDivElement>(null);
+  const scorePanelMobileRef = useRef<HTMLDivElement>(null);
+  const controlsDesktopRef = useRef<HTMLDivElement>(null);
+  const controlsMobileRef = useRef<HTMLDivElement>(null);
+  const multiplierHudDesktopRef = useRef<HTMLDivElement>(null);
+  const multiplierHudMobileRef = useRef<HTMLDivElement>(null);
+  const multiplierBarMobileRef = useRef<HTMLDivElement>(null);
+  const timePanelDesktopRef = useRef<HTMLDivElement>(null);
+  const timePanelMobileRef = useRef<HTMLDivElement>(null);
+  const proQueueDesktopRef = useRef<HTMLDivElement>(null);
+  const proQueueMobileRef = useRef<HTMLDivElement>(null);
   
   // Ref for active streak color to use in spawn logic without re-triggering effects
   const activeColorStreakRef = useRef<string | null>(null);
@@ -117,8 +149,31 @@ const App: React.FC = () => {
   }, [timeLeft]);
 
   useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
+
+  useEffect(() => {
     saveRunHistoryToStorage(runHistory);
   }, [runHistory]);
+
+  useEffect(() => {
+    // Sync persisted mute state into audio engine on first load.
+    if (isMuted) {
+      const muted = audioService.toggleMute();
+      if (muted !== isMuted) {
+        setIsMuted(muted);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MUTE_STATE_KEY, isMuted ? '1' : '0');
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [isMuted]);
 
   // Handle Resize - End game if playing
   const stopAllLoops = useCallback(() => {
@@ -136,6 +191,16 @@ const App: React.FC = () => {
     }
     audioService.stopMusic();
   }, []);
+
+  const endCurrentGame = useCallback(() => {
+    stopAllLoops();
+    setGameState(GameState.START);
+    setTargets([]);
+    setFloatingTexts([]);
+    setHasInteractionStarted(false);
+    setProRoute([]);
+    proRouteRef.current = [];
+  }, [stopAllLoops]);
 
   const shapeShortLabel = useCallback((shape: Shape) => {
     switch (shape) {
@@ -156,24 +221,6 @@ const App: React.FC = () => {
       mapping.set(shape, MODE_CONFIG.Pro.colors[idx]);
     });
     return mapping;
-  }, []);
-
-  const getProQueueNoSpawnZone = useCallback((width: number, iconSize: number, targetSize: number) => {
-    const topOffset = width >= 768 ? 126 : 118;
-    const horizontalPadding = 14;
-    const verticalPadding = 10;
-    const gap = 10;
-    const queueWidth = (horizontalPadding * 2) + (PRO_QUEUE_LENGTH * iconSize) + ((PRO_QUEUE_LENGTH - 1) * gap);
-    const queueHeight = (verticalPadding * 2) + iconSize;
-    const expansion = Math.max(targetSize * 1.15, 42);
-    const centerX = width / 2;
-
-    return {
-      left: centerX - (queueWidth / 2) - expansion,
-      right: centerX + (queueWidth / 2) + expansion,
-      top: topOffset - expansion,
-      bottom: topOffset + queueHeight + expansion,
-    };
   }, []);
 
   const buildProQueueFromTargets = useCallback((targetList: Target[], seedQueue: Shape[] = proRouteRef.current): Shape[] => {
@@ -266,7 +313,7 @@ const App: React.FC = () => {
   const endGame = useCallback(() => {
     stopAllLoops();
     setGameState(GameState.GAME_OVER);
-    audioService.playGameOverSound();
+    audioService.playGameOverSound(scoreRef.current, GODLIKE_SCORE_THRESHOLD);
     calculateStats();
   }, [stopAllLoops, calculateStats]);
 
@@ -310,10 +357,8 @@ const App: React.FC = () => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (gameState === GameState.PLAYING) {
-          // Abort game and return to start
-          stopAllLoops();
-          setGameState(GameState.START);
-          setTargets([]); // Clear screen
+          // Abort game and return to menu
+          endCurrentGame();
         } else if (gameState === GameState.GAME_OVER) {
           setGameState(GameState.START);
         }
@@ -321,7 +366,7 @@ const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [gameState, stopAllLoops]);
+  }, [gameState, endCurrentGame]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -333,16 +378,113 @@ const App: React.FC = () => {
   const spawnIfNeeded = useCallback(() => {
     if (gameState !== GameState.PLAYING) return;
     
-    // Get dimensions for pixel-based math
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    // Use play-area coordinates instead of viewport coordinates.
+    const playAreaRect = gameContainerRef.current?.getBoundingClientRect();
+    const playAreaLeft = playAreaRect?.left ?? 0;
+    const playAreaTop = playAreaRect?.top ?? 0;
+    const width = Math.round(playAreaRect?.width ?? window.innerWidth);
+    const height = Math.round(playAreaRect?.height ?? window.innerHeight);
     
     if (width === 0 || height === 0) return;
 
-    const proQueueIconSize = Math.max(32, Math.round(targetSizePx * PRO_QUEUE_ICON_SCALE));
-    const proQueueNoSpawnZone = currentMode === 'Pro'
-      ? getProQueueNoSpawnZone(width, proQueueIconSize, targetSizePx)
-      : null;
+    const mobileViewport = width < 768;
+    const noSpawnPadX = mobileViewport
+      ? Math.max(4, Math.min(10, targetSizePx * 0.12))
+      : Math.max(6, Math.min(14, targetSizePx * 0.16));
+    const noSpawnPadY = mobileViewport
+      ? Math.max(4, Math.min(12, targetSizePx * 0.14))
+      : Math.max(6, Math.min(16, targetSizePx * 0.18));
+    const mobileBottomSafeInset = mobileViewport
+      ? (() => {
+          const visualViewport = window.visualViewport;
+          if (!visualViewport) return 132;
+          const viewportBottomInWindow = visualViewport.offsetTop + visualViewport.height;
+          const playAreaBottomInWindow = playAreaTop + height;
+          const occludedBottom = Math.max(0, playAreaBottomInWindow - viewportBottomInWindow);
+          const inferredInset = occludedBottom + 68;
+          return Math.max(112, Math.min(Math.round(height * 0.4), inferredInset));
+        })()
+      : 0;
+
+    type RectLike = { left: number; right: number; top: number; bottom: number };
+    const uiNoSpawnZones: RectLike[] = [];
+    const pushUiNoSpawnZone = (
+      rect: RectLike,
+      expandX: number = noSpawnPadX,
+      expandY: number = noSpawnPadY
+    ) => {
+      const localLeft = rect.left - playAreaLeft;
+      const localRight = rect.right - playAreaLeft;
+      const localTop = rect.top - playAreaTop;
+      const localBottom = rect.bottom - playAreaTop;
+      uiNoSpawnZones.push({
+        left: Math.max(0, localLeft - expandX),
+        right: Math.min(width, localRight + expandX),
+        top: Math.max(0, localTop - expandY),
+        bottom: Math.min(height, localBottom + expandY),
+      });
+    };
+
+    const scorePanelRect = mobileViewport
+      ? scorePanelMobileRef.current?.getBoundingClientRect()
+      : scorePanelDesktopRef.current?.getBoundingClientRect();
+    if (scorePanelRect) pushUiNoSpawnZone(scorePanelRect);
+
+    const controlsRect = mobileViewport
+      ? controlsMobileRef.current?.getBoundingClientRect()
+      : controlsDesktopRef.current?.getBoundingClientRect();
+    if (controlsRect) pushUiNoSpawnZone(controlsRect);
+
+    const timePanelRect = mobileViewport
+      ? timePanelMobileRef.current?.getBoundingClientRect()
+      : timePanelDesktopRef.current?.getBoundingClientRect();
+    if (timePanelRect) pushUiNoSpawnZone(timePanelRect);
+
+    const multiplierHudRect = mobileViewport
+      ? multiplierHudMobileRef.current?.getBoundingClientRect()
+      : multiplierHudDesktopRef.current?.getBoundingClientRect();
+    if (multiplierHudRect) pushUiNoSpawnZone(multiplierHudRect);
+
+    if (currentMode === 'Pro') {
+      const proQueueRect = mobileViewport
+        ? proQueueMobileRef.current?.getBoundingClientRect()
+        : proQueueDesktopRef.current?.getBoundingClientRect();
+      if (proQueueRect) {
+        const queuePadX = Math.max(2, noSpawnPadX * 0.35);
+        const queuePadY = Math.max(2, noSpawnPadY * 0.35);
+        pushUiNoSpawnZone(proQueueRect, queuePadX, queuePadY);
+      }
+    }
+
+    if (mobileViewport) {
+      const multiplierBarRect = multiplierBarMobileRef.current?.getBoundingClientRect();
+      if (multiplierBarRect) {
+        pushUiNoSpawnZone(multiplierBarRect, noSpawnPadX, Math.max(5, noSpawnPadY - 2));
+      }
+    }
+
+    if (SHOW_SPAWN_DEBUG_FRAME) {
+      const nextDebugRect = {
+        left: 0,
+        top: 0,
+        width,
+        height: Math.max(0, height - mobileBottomSafeInset),
+      };
+      setSpawnDebugRect((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.left - nextDebugRect.left) < 0.5 &&
+          Math.abs(prev.top - nextDebugRect.top) < 0.5 &&
+          Math.abs(prev.width - nextDebugRect.width) < 0.5 &&
+          Math.abs(prev.height - nextDebugRect.height) < 0.5
+        ) {
+          return prev;
+        }
+        return nextDebugRect;
+      });
+    }
+
+    const maxSpawnBottom = Math.max(0, height - mobileBottomSafeInset);
 
     setTargets(prev => {
       const config = MODE_CONFIG[currentMode];
@@ -403,7 +545,7 @@ const App: React.FC = () => {
         const shape = config.shapes[typeIndex];
 
         // Stacked Logic:
-        // - stacked spawn chance ramps from 10% -> 30% over the run
+        // - stacked spawn chance ramps from 15% -> 30% over the run
         // - base maximum stack ramps from 5 -> 10
         // - in the last 5 seconds, base max stack jumps to 15
         // - stack tier per stacked target:
@@ -413,7 +555,7 @@ const App: React.FC = () => {
         let stackCount = 1;
         const currentTimeLeft = timeLeftRef.current;
         const progress = Math.min(1, Math.max(0, (GAME_DURATION - currentTimeLeft) / GAME_DURATION));
-        const stackedChance = 0.1 + 0.2 * progress;
+        const stackedChance = 0.15 + 0.15 * progress;
         const maxStackByProgress = Math.max(2, Math.round(5 + 5 * progress));
         const baseMaxStack = currentTimeLeft <= 5 ? 15 : maxStackByProgress;
 
@@ -433,63 +575,62 @@ const App: React.FC = () => {
         // --- 2. Position Generation with Constraints ---
         let attempts = 0;
         let placed = false;
-        
-        // Cluster Logic: 35% chance to spawn next to a same-color target (Increased from 10%)
-        let anchorTarget: Target | null = null;
-        if (Math.random() < 0.35 && allCurrentTargets.length > 0) {
-            const sameColorTargets = allCurrentTargets.filter(t => t.color === color);
-            if (sameColorTargets.length > 0) {
-                anchorTarget = sameColorTargets[Math.floor(Math.random() * sameColorTargets.length)];
-            }
-        }
 
-        while (attempts < 50 && !placed) {
+        const stackVisualOffsetPx = Math.max(0, (stackCount - 1) * 5);
+        const stackCenterShiftPx = stackVisualOffsetPx * 0.5;
+
+        while (attempts < 60 && !placed) {
             let xPx = 0;
             let yPx = 0;
 
-            if (anchorTarget && attempts < 15) { // Increased attempts for anchor
-                // Try to place near anchor (approx 1.05x diameter distance)
-                const angle = Math.random() * Math.PI * 2;
-                const dist = targetSizePx * 1.05; 
-                const anchorXPx = toPx(anchorTarget.x, width);
-                const anchorYPx = toPx(anchorTarget.y, height);
-                xPx = anchorXPx + Math.cos(angle) * dist;
-                yPx = anchorYPx + Math.sin(angle) * dist;
-            } else {
-                // Random Placement
-                // Safe zone logic: Padding of 0.85x size from edges (Increased from 0.6)
-                const pad = targetSizePx * 0.85;
-                const headerH = height * 0.15; // 15% top header
-                
-                const minX = pad;
-                const maxX = width - pad;
-                const minY = headerH + pad;
-                const maxY = height - pad;
+            // Minimal spawning: uniform random in the valid center range.
+            const halfSize = targetSizePx * 0.5;
+            const minCenterX = halfSize + stackCenterShiftPx;
+            const maxCenterX = width - halfSize - stackCenterShiftPx;
+            const minCenterY = halfSize + stackCenterShiftPx;
+            const maxCenterY = maxSpawnBottom - halfSize - stackCenterShiftPx;
 
-                if (maxX > minX) xPx = minX + Math.random() * (maxX - minX);
-                else xPx = width / 2;
-                
-                if (maxY > minY) yPx = minY + Math.random() * (maxY - minY);
-                else yPx = height / 2;
+            if (maxCenterX > minCenterX) {
+              const spawnFootprintCenterX = minCenterX + Math.random() * (maxCenterX - minCenterX);
+              xPx = spawnFootprintCenterX;
+            } else {
+              xPx = width * 0.5;
+            }
+            
+            if (maxCenterY > minCenterY) {
+              const spawnFootprintCenterY = minCenterY + Math.random() * (maxCenterY - minCenterY);
+              yPx = spawnFootprintCenterY;
+            } else {
+              yPx = height * 0.5;
             }
 
             // Boundary Check (Strict)
-            // Ensure center is at least 0.6 * size from edge (radius is 0.5, so 0.1 margin)
-            const margin = targetSizePx * 0.6;
-            if (xPx < margin || xPx > width - margin || 
-                yPx < margin || yPx > height - margin || 
-                yPx < height * 0.15 + margin/2) {
+            // Minimal safeguard: gem footprint must stay fully inside play area.
+            const targetBounds = {
+              left: xPx - halfSize - stackCenterShiftPx,
+              right: xPx + halfSize + stackCenterShiftPx,
+              top: yPx - halfSize - stackCenterShiftPx,
+              bottom: yPx + halfSize + stackCenterShiftPx,
+            };
+
+            if (
+              targetBounds.left < 0 ||
+              targetBounds.right > width ||
+              targetBounds.top < 0 ||
+              targetBounds.bottom > maxSpawnBottom
+            ) {
                 attempts++;
                 continue;
             }
 
-            if (
-              proQueueNoSpawnZone &&
-              xPx >= proQueueNoSpawnZone.left &&
-              xPx <= proQueueNoSpawnZone.right &&
-              yPx >= proQueueNoSpawnZone.top &&
-              yPx <= proQueueNoSpawnZone.bottom
-            ) {
+            const intersectsUiNoSpawnZone = uiNoSpawnZones.some((zone) => (
+              targetBounds.right >= zone.left &&
+              targetBounds.left <= zone.right &&
+              targetBounds.bottom >= zone.top &&
+              targetBounds.top <= zone.bottom
+            ));
+
+            if (intersectsUiNoSpawnZone) {
               attempts++;
               continue;
             }
@@ -545,7 +686,7 @@ const App: React.FC = () => {
       }
       return [...prev, ...newTargets];
     });
-  }, [gameState, currentMode, targetSizePx, getProQueueNoSpawnZone]);
+  }, [gameState, currentMode, targetSizePx]);
 
   // Multiplier Decay Logic
   const updateMultiplier = useCallback((timestamp: number) => {
@@ -617,6 +758,7 @@ const App: React.FC = () => {
     setCurrentMode(mode);
     setFeedbackMessage(null);
     await audioService.resume();
+    audioService.playStartSound();
     audioService.startMusic();
     
     setScore(0);
@@ -652,6 +794,9 @@ const App: React.FC = () => {
     if (gameState !== GameState.PLAYING) return;
     
     const config = MODE_CONFIG[currentMode];
+    const gameAreaRect = gameContainerRef.current?.getBoundingClientRect();
+    const localClickX = gameAreaRect ? clientX - gameAreaRect.left : clientX;
+    const localClickY = gameAreaRect ? clientY - gameAreaRect.top : clientY;
 
     // First Interaction Start
     if (!hasInteractionStarted) {
@@ -721,8 +866,8 @@ const App: React.FC = () => {
         const textId = Date.now();
         setFloatingTexts(prev => [...prev, {
           id: textId,
-          x: clientX,
-          y: clientY,
+          x: localClickX,
+          y: localClickY,
           text: `WRONG ${shapeShortLabel(requiredShape)}!`,
           color: "text-gray-800",
           scale: 1.6
@@ -748,11 +893,19 @@ const App: React.FC = () => {
 
     setActiveColorStreak(color);
 
-    // MODE SPECIFIC GAIN
-    const baseGain = config.multGainBase * burstCount;
-    const speedBonus = isRapidClick ? config.multGainBase * burstCount : 0; // Double gain for speed
-    const multiplierGain = baseGain + speedBonus;
-    const nextMultiplier = Math.min(baseMultiplier + multiplierGain, MULTIPLIER_CAP);
+    // Stack behaves like sequential collects: each tick increases multiplier once.
+    const gainPerTick = config.multGainBase * (isRapidClick ? 2 : 1);
+    const stackScoreMultiplier = burstCount > 1 ? 2 : 1;
+    let simulatedMultiplier = baseMultiplier;
+    let earned = 0;
+    const burstPitchLevels: number[] = [];
+    for (let i = 0; i < burstCount; i++) {
+      // Keep scoring semantics per collect tick based on pre-increase multiplier.
+      earned += Math.floor(config.basePoints * simulatedMultiplier * stackScoreMultiplier);
+      simulatedMultiplier = Math.min(MULTIPLIER_CAP, simulatedMultiplier + gainPerTick);
+      burstPitchLevels.push(simulatedMultiplier);
+    }
+    const nextMultiplier = simulatedMultiplier;
 
     const previousTier = Math.floor(baseMultiplier / MULTIPLIER_ANNOUNCE_STEP);
     const nextTier = Math.floor(nextMultiplier / MULTIPLIER_ANNOUNCE_STEP);
@@ -773,10 +926,11 @@ const App: React.FC = () => {
     const burstStartDelay = brokeStreak ? 120 : 0;
     for (let i = 0; i < burstCount; i++) {
       setTimeout(() => {
+        const soundLevel = burstPitchLevels[i] ?? nextMultiplier;
         if (isRapidClick) {
-          audioService.playSpeedBonus();
+          audioService.playSpeedBonus(soundLevel, MULTIPLIER_CAP);
         } else {
-          audioService.playComboBoost(baseMultiplier + (i * 0.1));
+          audioService.playComboBoost(soundLevel, MULTIPLIER_CAP);
         }
       }, burstStartDelay + (i * 60));
     }
@@ -788,7 +942,6 @@ const App: React.FC = () => {
     }));
 
     // Points calculation
-    const earned = Math.floor(config.basePoints * baseMultiplier * burstCount);
     setScore(prev => prev + earned);
 
     setCurrentStreakPoints(prev => {
@@ -819,11 +972,11 @@ const App: React.FC = () => {
 
     setFloatingTexts(prev => [...prev, { 
       id: textId, 
-      x: clientX, 
-      y: clientY, 
+      x: localClickX, 
+      y: localClickY, 
       text: floatText, 
       color: brokeStreak ? "text-gray-800" : "text-white",
-      scale: Math.min(1 + (multiplier * 0.1) + (burstCount * 0.2), 3.5) 
+      scale: Math.min(1 + (nextMultiplier * 0.1) + (burstCount * 0.2), 3.5) 
     }]);
     
     setTimeout(() => {
@@ -908,6 +1061,7 @@ const App: React.FC = () => {
   const proLatestRuns = fillToThree(getLatestRunsForMode('Pro'));
   const proBestRuns = fillToThree(getBestRunsForMode('Pro'));
   const proQueueIconSize = Math.max(32, Math.round(targetSizePx * PRO_QUEUE_ICON_SCALE));
+  const proQueueIconSizeMobile = Math.max(24, Math.round(proQueueIconSize * 0.72));
 
   const toggleSound = () => {
     const muted = audioService.toggleMute();
@@ -926,99 +1080,242 @@ const App: React.FC = () => {
       <div className="absolute inset-0 bg-pattern pointer-events-none"></div>
 
       {/* Header UI */}
-      <div className="absolute top-0 left-0 w-full p-2 md:p-4 z-50 pointer-events-none flex flex-col md:flex-row justify-between items-start">
-        
-        {/* Left: Total Score */}
-        <div className="flex flex-col items-start pointer-events-auto mb-2 md:mb-0 w-1/4">
-           <div className="bg-white border-4 border-black rounded-2xl px-4 py-2 shadow-hard inline-block">
-             <span className="text-xs md:text-sm uppercase tracking-wider text-gray-500 block">Total Score</span>
-             <div className="text-4xl md:text-6xl text-blue-500 text-stroke leading-none">{score}</div>
-           </div>
-        </div>
+      <div
+        className="absolute top-0 left-0 w-full z-50"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
+        {gameState === GameState.PLAYING ? (
+          <div className="w-full px-3 pt-2 pb-2 md:px-4 md:pt-3 md:pb-2">
+            {/* Mobile Playing HUD */}
+            <div className="md:hidden pointer-events-none">
+              <div className="grid grid-cols-[auto_1fr_auto] items-start gap-x-2">
+                <div ref={scorePanelMobileRef} className="pointer-events-auto">
+                  <div className="bg-white border-4 border-black rounded-2xl px-3 py-1.5 shadow-hard inline-block min-h-[76px]">
+                    <span className="text-[11px] uppercase tracking-wider text-gray-500 block">Total Score</span>
+                    <div className="text-3xl text-blue-500 text-stroke leading-none">{score}</div>
+                  </div>
+                </div>
 
-        {/* Center: Multiplier Display with LARGE Horizontal Liquid Bar */}
-        {gameState === GameState.PLAYING && (
-          <div className="absolute left-1/2 transform -translate-x-1/2 top-4 pointer-events-none flex flex-col items-center w-full max-w-2xl px-4">
-             {/* Text & Streak Info */}
-             <div className="flex items-end gap-3 mb-1">
-                <div 
-                  className={`text-6xl font-black text-stroke-lg text-white drop-shadow-lg transition-transform duration-75 leading-none`}
-                  style={{
-                    transform: `rotate(${Math.sin(Date.now() / 100) * 3}deg) scale(${1 + (multiplier / 24)})`,
-                    color: activeColorStreak || '#FFFFFF'
-                  }}
+                <div ref={controlsMobileRef} className="pointer-events-auto justify-self-center self-start mt-1 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={endCurrentGame}
+                    className="bg-white border-4 border-black rounded-full px-3.5 py-2 shadow-hard cursor-pointer hover:bg-gray-100 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center gap-2 text-sm"
+                    aria-label="End current game and return to menu"
+                  >
+                    <Home className="w-4 h-4" />
+                    Menu
+                  </button>
+                  <div className={`border-4 rounded-full p-2 shadow-hard cursor-pointer transition-colors ${isMuted ? 'bg-red-100 border-red-600' : 'bg-white border-black hover:bg-gray-100'}`} onClick={toggleSound}>
+                    {isMuted ? <VolumeX className="w-5 h-5 text-red-600" /> : <Volume2 className="w-5 h-5" />}
+                  </div>
+                </div>
+
+                <div
+                  ref={timePanelMobileRef}
+                  className={`pointer-events-auto justify-self-end bg-white border-4 border-black rounded-2xl px-2.5 py-1.5 shadow-hard w-[118px] min-h-[76px] text-center ${timeLeft <= 10 ? 'animate-pulse-subtle' : ''}`}
                 >
-                  x{multiplier.toFixed(1)}
+                  <span className="text-[10px] uppercase tracking-wider text-gray-500 block">Time</span>
+                  <div className={`text-4xl text-stroke leading-none font-mono tabular-nums ${timeLeft <= 5 ? 'text-red-500' : 'text-green-500'}`}>
+                    {!hasInteractionStarted ? "GO" : String(timeLeft).padStart(2, '0')}
+                  </div>
                 </div>
-                <div className="bg-black/80 text-white rounded-full px-3 py-1 text-sm border-2 border-white/50 backdrop-blur-sm shadow-hard mb-2">
+              </div>
+
+              <div className="mt-1.5 flex justify-center">
+                <div
+                  ref={multiplierHudMobileRef}
+                  className="pointer-events-none min-w-[278px] grid grid-cols-[160px_auto] items-end justify-center gap-2"
+                >
+                  <div
+                    className="w-[160px] pr-1 text-right text-5xl font-black text-stroke-lg text-white drop-shadow-lg transition-transform duration-75 leading-none tabular-nums"
+                    style={{
+                      transform: `rotate(${Math.sin(Date.now() / 100) * 2.4}deg) scale(${1 + (Math.min(multiplier, 12) / 42)})`,
+                      color: activeColorStreak || '#FFFFFF'
+                    }}
+                  >
+                    x{multiplier.toFixed(1)}
+                  </div>
+                  <div className="shrink-0 bg-black/80 text-white rounded-full px-2 py-0.5 text-[11px] border-2 border-white/50 backdrop-blur-sm shadow-hard mb-1 whitespace-nowrap">
                     Streak: {currentStreakPoints}
+                  </div>
                 </div>
-             </div>
+              </div>
 
-             {/* Liquid Bar - Horizontal and Big */}
-             <div className={`w-full h-8 bg-white border-4 border-black rounded-full relative overflow-hidden shadow-hard ${multiplier >= 10 ? 'animate-crazy-shake ring-4 ring-yellow-400' : ''}`}>
-               <div 
-                 className={`absolute left-0 top-0 h-full transition-all duration-100 ease-linear ${multiplier >= 10 ? 'animate-rainbow' : ''}`}
-                 style={{
-                   width: `${Math.min(100, ((multiplier - 1) / (MULTIPLIER_CAP - 1)) * 100)}%`, // 1 to 20 scale
-                   backgroundColor: multiplier >= 10 ? undefined : (activeColorStreak || '#3B82F6')
-                 }}
-               >
-                 {/* Bubbles / Glint overlay */}
-                 <div className="absolute inset-0 w-full bg-white/30 animate-pulse"></div>
-                 <div className="absolute right-0 top-0 h-full w-2 bg-white/50"></div>
-               </div>
-               
-               {/* Tick marks */}
-               <div className="absolute inset-0 flex justify-between px-2 items-center opacity-30 pointer-events-none">
-                  {[...Array(6)].map((_, i) => <div key={i} className="h-full w-0.5 bg-black"></div>)}
-               </div>
-             </div>
+              <div className="mt-1.5">
+                <div ref={multiplierBarMobileRef} className="min-w-0">
+                  <div className={`w-full h-6 bg-white border-4 border-black rounded-full relative overflow-hidden shadow-hard ${multiplier >= 10 ? 'animate-crazy-shake ring-4 ring-yellow-400' : ''}`}>
+                    <div
+                      className={`absolute left-0 top-0 h-full transition-all duration-100 ease-linear ${multiplier >= 10 ? 'animate-rainbow' : ''}`}
+                      style={{
+                        width: `${Math.min(100, ((multiplier - 1) / (MULTIPLIER_CAP - 1)) * 100)}%`,
+                        backgroundColor: multiplier >= 10 ? undefined : (activeColorStreak || '#3B82F6')
+                      }}
+                    >
+                      <div className="absolute inset-0 w-full bg-white/30 animate-pulse"></div>
+                      <div className="absolute right-0 top-0 h-full w-2 bg-white/50"></div>
+                    </div>
+                    <div className="absolute inset-0 flex justify-between px-2 items-center opacity-30 pointer-events-none">
+                      {[...Array(6)].map((_, i) => <div key={i} className="h-full w-0.5 bg-black"></div>)}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-             {currentMode === 'Pro' && proRoute.length > 0 && (
-               <div className="mt-2 bg-white border-4 border-black rounded-2xl px-3 py-2 shadow-hard flex items-center justify-center gap-2">
-                 {proRoute.map((shape, idx) => (
-                   <ShapePreview
-                     key={`${shape}-${idx}`}
-                     shape={shape}
-                     color={proShapeColorMap.get(shape) || '#FFFFFF'}
-                     sizePx={proQueueIconSize}
-                     isPrimary={idx === 0}
-                   />
-                 ))}
-               </div>
-             )}
+              {currentMode === 'Pro' && (
+                <div
+                  ref={proQueueMobileRef}
+                  className={`mt-1 bg-white border-4 border-black rounded-2xl px-2 py-1 shadow-hard flex items-center justify-center gap-1.5 min-h-[46px] min-w-[156px] ${proRoute.length === 0 ? 'invisible' : ''}`}
+                >
+                  {proRoute.map((shape, idx) => (
+                    <ShapePreview
+                      key={`mobile-${shape}-${idx}`}
+                      shape={shape}
+                      color={proShapeColorMap.get(shape) || '#FFFFFF'}
+                      sizePx={proQueueIconSizeMobile}
+                      isPrimary={idx === 0}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Desktop Playing HUD */}
+            <div className="hidden md:block pointer-events-none relative">
+              <div className="flex justify-between items-start">
+                <div ref={scorePanelDesktopRef} className="pointer-events-auto w-1/4">
+                  <div className="bg-white border-4 border-black rounded-2xl px-4 py-2 shadow-hard inline-block">
+                    <span className="text-sm uppercase tracking-wider text-gray-500 block">Total Score</span>
+                    <div className="text-6xl text-blue-500 text-stroke leading-none">{score}</div>
+                  </div>
+                </div>
+
+                <div ref={controlsDesktopRef} className="pointer-events-auto flex flex-col items-end absolute right-4 top-5 w-1/4">
+                  <button
+                    type="button"
+                    onClick={endCurrentGame}
+                    className="bg-white border-4 border-black rounded-full px-4 py-2 shadow-hard cursor-pointer hover:bg-gray-100 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center gap-2 mb-2 text-base"
+                    aria-label="End current game and return to menu"
+                  >
+                    <Home className="w-5 h-5" />
+                    Menu
+                  </button>
+                  <div className={`border-4 rounded-full p-2 shadow-hard cursor-pointer transition-colors mb-2 ${isMuted ? 'bg-red-100 border-red-600' : 'bg-white border-black hover:bg-gray-100'}`} onClick={toggleSound}>
+                    {isMuted ? <VolumeX className="w-5 h-5 text-red-600" /> : <Volume2 className="w-5 h-5" />}
+                  </div>
+                  <div
+                    ref={timePanelDesktopRef}
+                    className={`bg-white border-4 border-black rounded-2xl px-4 py-2 shadow-hard w-[162px] text-center ${timeLeft <= 10 ? 'animate-pulse-subtle' : ''}`}
+                  >
+                    <span className="text-sm uppercase tracking-wider text-gray-500 block">Time</span>
+                    <div className={`text-6xl text-stroke leading-none font-mono tabular-nums ${timeLeft <= 5 ? 'text-red-500' : 'text-green-500'}`}>
+                      {!hasInteractionStarted ? "GO" : String(timeLeft).padStart(2, '0')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                ref={multiplierHudDesktopRef}
+                className="pointer-events-none flex flex-col items-center absolute left-1/2 top-5 w-full max-w-2xl px-4 -translate-x-1/2"
+              >
+                <div className="flex items-end gap-3 mb-1">
+                  <div
+                    className="text-6xl font-black text-stroke-lg text-white drop-shadow-lg transition-transform duration-75 leading-none"
+                    style={{
+                      transform: `rotate(${Math.sin(Date.now() / 100) * 3}deg) scale(${1 + (multiplier / 24)})`,
+                      color: activeColorStreak || '#FFFFFF'
+                    }}
+                  >
+                    x{multiplier.toFixed(1)}
+                  </div>
+                  <div className="bg-black/80 text-white rounded-full px-2.5 py-1 text-sm border-2 border-white/50 backdrop-blur-sm shadow-hard mb-2">
+                    Streak: {currentStreakPoints}
+                  </div>
+                </div>
+
+                <div className={`w-full h-8 bg-white border-4 border-black rounded-full relative overflow-hidden shadow-hard ${multiplier >= 10 ? 'animate-crazy-shake ring-4 ring-yellow-400' : ''}`}>
+                  <div
+                    className={`absolute left-0 top-0 h-full transition-all duration-100 ease-linear ${multiplier >= 10 ? 'animate-rainbow' : ''}`}
+                    style={{
+                      width: `${Math.min(100, ((multiplier - 1) / (MULTIPLIER_CAP - 1)) * 100)}%`,
+                      backgroundColor: multiplier >= 10 ? undefined : (activeColorStreak || '#3B82F6')
+                    }}
+                  >
+                    <div className="absolute inset-0 w-full bg-white/30 animate-pulse"></div>
+                    <div className="absolute right-0 top-0 h-full w-2 bg-white/50"></div>
+                  </div>
+
+                  <div className="absolute inset-0 flex justify-between px-2 items-center opacity-30 pointer-events-none">
+                    {[...Array(6)].map((_, i) => <div key={i} className="h-full w-0.5 bg-black"></div>)}
+                  </div>
+                </div>
+
+                {currentMode === 'Pro' && (
+                  <div
+                    ref={proQueueDesktopRef}
+                    className={`mt-2 bg-white border-4 border-black rounded-2xl px-3 py-2 shadow-hard flex items-center justify-center gap-2 min-h-[64px] min-w-[248px] ${proRoute.length === 0 ? 'invisible' : ''}`}
+                  >
+                    {proRoute.map((shape, idx) => (
+                      <ShapePreview
+                        key={`${shape}-${idx}`}
+                        shape={shape}
+                        color={proShapeColorMap.get(shape) || '#FFFFFF'}
+                        sizePx={proQueueIconSize}
+                        isPrimary={idx === 0}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full px-4 pb-2 pt-3 md:p-4 pointer-events-none flex flex-col md:flex-row justify-between items-start">
+            <div className="flex flex-col items-start pointer-events-auto mb-2 md:mb-0 w-auto md:w-1/4">
+              <div className="bg-white border-4 border-black rounded-2xl px-4 py-2 shadow-hard inline-block">
+                <span className="text-xs md:text-sm uppercase tracking-wider text-gray-500 block">Total Score</span>
+                <div className="text-4xl md:text-6xl text-blue-500 text-stroke leading-none">{score}</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 md:flex-col md:items-end pointer-events-auto absolute right-3 top-3 md:right-4 md:top-5 md:static w-auto md:w-1/4">
+              {gameState === GameState.GAME_OVER ? (
+                <button
+                  type="button"
+                  onClick={endCurrentGame}
+                  className="bg-white border-4 border-black rounded-full px-3.5 py-2 md:px-4 md:py-2 shadow-hard cursor-pointer hover:bg-gray-100 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center gap-2 mb-0 md:mb-2 text-sm md:text-base"
+                  aria-label="Return to menu"
+                >
+                  <Home className="w-5 h-5" />
+                  Menu
+                </button>
+              ) : (
+                <a
+                  href="/"
+                  className="bg-white border-4 border-black rounded-full p-2 md:p-2.5 shadow-hard cursor-pointer hover:bg-gray-100 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center mb-0 md:mb-2"
+                  aria-label="Back to home"
+                >
+                  <X className="w-5 h-5" />
+                </a>
+              )}
+              <div className={`border-4 rounded-full p-2 shadow-hard cursor-pointer transition-colors ${isMuted ? 'bg-red-100 border-red-600' : 'bg-white border-black hover:bg-gray-100'}`} onClick={toggleSound}>
+                {isMuted ? <VolumeX className="w-5 h-5 text-red-600" /> : <Volume2 className="w-5 h-5" />}
+              </div>
+            </div>
           </div>
         )}
-
-        {/* Right: Controls & Time */}
-        <div className="flex flex-col items-end pointer-events-auto absolute right-4 top-4 md:static w-1/4">
-           <a
-             href="/"
-             className="bg-white border-4 border-black rounded-full px-4 py-2 shadow-hard cursor-pointer hover:bg-gray-100 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center gap-2 mb-2 text-sm md:text-base"
-             aria-label="Back to home"
-           >
-             <Home className="w-5 h-5" />
-             Home
-           </a>
-           <div className={`bg-white border-4 border-black rounded-full p-2 shadow-hard cursor-pointer hover:bg-gray-100 mb-2`} onClick={toggleSound}>
-             {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-           </div>
-           
-           {gameState === GameState.PLAYING && (
-             <div className={`bg-white border-4 border-black rounded-2xl px-4 py-2 shadow-hard w-[132px] md:w-[162px] text-center ${timeLeft <= 10 ? 'animate-pulse-subtle' : ''}`}>
-               <span className="text-xs md:text-sm uppercase tracking-wider text-gray-500 block">Time</span>
-               <div className={`text-4xl md:text-6xl text-stroke leading-none font-mono tabular-nums ${timeLeft <= 5 ? 'text-red-500' : 'text-green-500'}`}>
-                 {!hasInteractionStarted ? "GO" : String(timeLeft).padStart(2, '0')}
-               </div>
-             </div>
-           )}
-        </div>
       </div>
 
       {/* START SCREEN */}
       {gameState === GameState.START && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-40 bg-black/20 backdrop-blur-sm p-4 overflow-y-auto">
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-start md:justify-center z-40 bg-black/20 backdrop-blur-sm px-4 pb-4 overflow-y-auto"
+          style={{
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 96px)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)',
+          }}
+        >
           {/* Feedback Message Overlay */}
           {feedbackMessage && (
              <div className="absolute top-20 z-50 animate-pop-in">
@@ -1028,7 +1325,7 @@ const App: React.FC = () => {
              </div>
           )}
 
-          <div className="w-full max-w-7xl grid grid-cols-1 xl:grid-cols-12 gap-4 md:gap-6 items-center my-auto">
+          <div className="w-full max-w-7xl grid grid-cols-1 xl:grid-cols-12 gap-4 md:gap-6 items-center my-0 md:my-auto">
             <div className="xl:col-span-3 order-2 xl:order-1">
               <div className="bg-white border-4 border-black rounded-3xl p-4 md:p-5 shadow-hard-lg w-full max-w-md mx-auto">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border-2 border-black bg-green-500 text-white text-sm font-black mb-4">
@@ -1073,30 +1370,30 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="xl:col-span-6 order-1 xl:order-2">
-              <div className="bg-white border-4 border-black rounded-3xl p-6 md:p-8 max-w-xl w-full shadow-hard-lg text-center mx-auto">
+            <div className="xl:col-span-6 order-1 xl:order-2 xl:-translate-y-4">
+              <div className="bg-white border-4 border-black rounded-3xl p-5 md:p-7 max-w-xl w-full shadow-hard-lg text-center mx-auto">
                 <h1 className="text-6xl md:text-7xl mb-6 py-2 px-4 text-yellow-400 text-stroke-lg tracking-wide drop-shadow-md animate-bounce leading-tight">
                   POP<br/>A<br/>LOT
                 </h1>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-[13fr_7fr] gap-4">
                   <button
                     onClick={() => startGame('Arcade')}
-                    className="bg-green-500 text-white text-xl p-4 rounded-2xl border-4 border-black shadow-hard hover:bg-green-400 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex flex-col items-center justify-center gap-2 group"
+                    className="bg-green-500 text-white text-xl p-4 md:p-5 rounded-2xl border-4 border-black shadow-hard hover:bg-green-400 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex flex-col items-center justify-center gap-2 group min-h-[142px] md:min-h-0"
                   >
                     <Play className="w-8 h-8 fill-current group-hover:scale-110 transition-transform" />
                     <span className="font-black">ARCADE</span>
-                    <span className="text-xs text-green-100 opacity-80 font-medium">Standard Fun</span>
+                    <span className="text-xs text-green-100 opacity-90 font-medium">Fun First, Flow Fast</span>
                   </button>
 
                   <button
                     onClick={() => startGame('Pro')}
-                    className="bg-purple-600 text-white text-xl p-4 rounded-2xl border-4 border-black shadow-hard hover:bg-purple-500 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex flex-col items-center justify-center gap-2 group relative overflow-hidden"
+                    className="bg-purple-600 text-white text-xl p-2.5 md:p-4 rounded-2xl border-4 border-black shadow-hard hover:bg-purple-500 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex flex-col items-center justify-center gap-1.5 md:gap-2 group relative overflow-hidden min-h-[96px] md:min-h-0"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-transparent to-black/20 pointer-events-none"></div>
                     <Zap className="w-8 h-8 fill-current group-hover:scale-110 transition-transform animate-pulse" />
                     <span className="font-black">PRO MODE</span>
-                    <span className="text-xs text-purple-200 opacity-80 font-medium">7 Colors • Harder</span>
+                    <span className="text-xs text-purple-200 opacity-90 font-medium">Pain First, Glory Later</span>
                   </button>
                 </div>
               </div>
@@ -1221,6 +1518,21 @@ const App: React.FC = () => {
         className="absolute inset-0 z-10 cursor-crosshair"
         onMouseDown={handleBgClick}
       >
+        {SHOW_SPAWN_DEBUG_FRAME && gameState === GameState.PLAYING && spawnDebugRect && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: spawnDebugRect.left,
+              top: spawnDebugRect.top,
+              width: spawnDebugRect.width,
+              height: spawnDebugRect.height,
+              border: '3px solid rgba(255, 0, 0, 0.95)',
+              boxSizing: 'border-box',
+              zIndex: 95,
+            }}
+          />
+        )}
+
         {targets.map(target => (
           <TargetButton 
             key={target.id}
@@ -1229,6 +1541,24 @@ const App: React.FC = () => {
             // If we have an active streak, bring matching colors to front (zIndex 50), push others back (zIndex 10)
             zIndex={activeColorStreak && target.color === activeColorStreak ? 50 : 10}
             onClick={handleTargetClick}
+          />
+        ))}
+
+        {SHOW_SPAWN_DEBUG_FRAME && gameState === GameState.PLAYING && targets.map((target) => (
+          <div
+            key={`debug-point-${target.id}`}
+            className="absolute pointer-events-none"
+            style={{
+              left: `${target.x}%`,
+              top: `${target.y}%`,
+              width: 8,
+              height: 8,
+              borderRadius: '9999px',
+              backgroundColor: 'rgba(255, 0, 0, 0.95)',
+              border: '1px solid rgba(255, 255, 255, 0.95)',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 110,
+            }}
           />
         ))}
 

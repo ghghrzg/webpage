@@ -2,11 +2,15 @@
 layout: none
 ---
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="shared-bg-html">
 <head>
   <meta charset="UTF-8" />
-  <title>lucsch</title>
+  <title>[lucsch]</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="/lucsch_icon.png" />
+  <meta name="theme-color" content="#111730" />
+  <link rel="stylesheet" href="/assets/shared-background.css" />
   <style>
     :root {
       --bg0: #0b0d1a;
@@ -28,27 +32,33 @@ layout: none
       margin: 0;
       padding: 0;
       min-height: 100%;
-      background: radial-gradient(circle at 20% 10%, #252a5a 0, transparent 55%),
-                  radial-gradient(circle at 80% 0%, #3a2f5a 0, transparent 50%),
-                  linear-gradient(140deg, var(--bg0), var(--bg1) 55%, var(--bg2));
       color: transparent;
     }
 
     body {
       margin: 0;
       min-height: 100vh;
+      min-height: 100dvh;
       font-family: var(--display);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem 1.25rem 3rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+      place-items: center;
+      padding: 1.2rem 1.25rem;
       overflow-x: hidden;
+      overscroll-behavior-y: none;
       background: transparent;
+      position: relative;
+    }
+
+    body > .shell {
+      grid-area: 1 / 1;
+      place-self: center;
     }
 
     .shell {
       width: min(980px, 100%);
-      margin-inline: auto;
+      margin: 0;
       border-radius: 20px;
       padding: 1.8rem;
       background: linear-gradient(136deg, rgba(12, 14, 28, 0.94), rgba(10, 12, 24, 0.94));
@@ -248,37 +258,6 @@ layout: none
       color: var(--muted);
     }
 
-    .ambient {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .ambient span {
-      position: absolute;
-      border-radius: 999px;
-      opacity: 0.4;
-      will-change: transform, opacity;
-    }
-
-    .cursor-glow {
-      position: fixed;
-      width: 160px;
-      height: 160px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(124, 255, 209, 0.08), transparent 70%);
-      pointer-events: none;
-      transform: translate(-50%, -50%);
-      opacity: 0;
-      transition: opacity 0.2s ease;
-      z-index: 0;
-    }
-
-    body.moused .cursor-glow {
-      opacity: 0.45;
-    }
-
     .grid {
       display: flex;
       flex-wrap: wrap;
@@ -322,8 +301,11 @@ layout: none
     .panel-terminal .heading-sigil {
       color: var(--accent);
       font-family: var(--mono);
-      font-size: 0.95rem;
+      font-size: 0.88em;
       line-height: 1;
+      display: inline-block;
+      position: relative;
+      top: 0.035em;
       flex: 0 0 auto;
     }
 
@@ -333,6 +315,8 @@ layout: none
       padding: 0;
       display: grid;
       gap: 0.6rem;
+      width: min(100%, 42rem);
+      margin-inline: auto;
     }
 
     .exp-list li {
@@ -350,9 +334,10 @@ layout: none
     }
 
     .exp-list li a {
-      display: flex;
-      justify-content: space-between;
-      gap: 0.75rem;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      column-gap: 0.75rem;
+      row-gap: 0.35rem;
       align-items: center;
       min-width: 0;
       overflow: hidden;
@@ -367,11 +352,11 @@ layout: none
       transition: transform 0.12s ease, box-shadow 0.12s ease;
     }
 
-    .exp-list li a::before {
-      content: ">";
-      margin-right: 0.6rem;
+    .entry-arrow {
       color: var(--accent);
       font-weight: 700;
+      line-height: 1;
+      transform: translateY(-0.02em);
     }
 
     .entry-name {
@@ -386,15 +371,16 @@ layout: none
     .entry-stars {
       display: inline-flex;
       align-items: center;
-      gap: 0.18rem;
+      gap: 0.24rem;
       flex: 0 0 auto;
       margin-left: auto;
-      font-size: 0.84rem;
+      font-size: 1.11rem;
+      letter-spacing: 0.04em;
     }
 
     .entry-stars .star {
       line-height: 1;
-      opacity: 0.95;
+      opacity: 0.92;
     }
 
     .entry-stars .star.filled {
@@ -425,19 +411,22 @@ layout: none
       color: var(--muted);
       font-size: 0.85rem;
       line-height: 1.5;
+      overflow-wrap: anywhere;
     }
 
     .socials {
       margin-top: 1rem;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
+      display: grid;
       gap: 0.45rem;
+      width: max-content;
+      max-width: 100%;
     }
 
     .socials a {
-      display: inline-flex;
+      display: flex;
       align-items: center;
+      justify-content: center;
+      width: 100%;
       padding: 0.3rem 0.65rem;
       border-radius: 999px;
       border: 1px solid rgba(124, 255, 209, 0.3);
@@ -447,8 +436,11 @@ layout: none
       letter-spacing: 0.08em;
       text-decoration: none;
       text-transform: uppercase;
+      text-align: center;
       background: rgba(124, 255, 209, 0.06);
       transition: transform 0.12s ease, border-color 0.12s ease;
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
 
     .socials a:hover {
@@ -486,9 +478,76 @@ layout: none
       border-color: rgba(124, 255, 209, 0.6);
       color: var(--accent);
     }
+
+    @media (max-width: 899px) {
+      body {
+        display: block;
+        padding:
+          calc(0.9rem + env(safe-area-inset-top))
+          max(0.35rem, env(safe-area-inset-right))
+          calc(1.2rem + env(safe-area-inset-bottom))
+          max(0.35rem, env(safe-area-inset-left));
+      }
+
+      .shell {
+        width: 100%;
+        max-width: none;
+        margin: 0 auto;
+        padding: 1.25rem;
+        border-radius: 20px;
+      }
+
+      .shell::before {
+        inset: -58%;
+        opacity: 0.98;
+        filter: blur(13px);
+      }
+
+      .grid {
+        gap: 1rem;
+      }
+
+      .panel-about {
+        order: -1;
+      }
+
+      .panel-terminal {
+        order: 1;
+      }
+
+      .promptline {
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+
+      .panel-terminal h2 {
+        margin-bottom: 1rem;
+      }
+
+      .exp-list {
+        width: min(100%, 38rem);
+        margin-inline: auto;
+      }
+
+      .exp-list li a {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+      }
+
+      .entry-name {
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+
+      .entry-stars {
+        justify-content: flex-end;
+        margin-left: auto;
+        font-size: 0.72rem;
+      }
+    }
   </style>
 </head>
-<body>
+<body class="shared-bg-body">
 <div class="ambient" aria-hidden="true"></div>
 <div class="cursor-glow" aria-hidden="true"></div>
 <main class="shell">
@@ -536,26 +595,19 @@ layout: none
 {% endfor %}
 ]
 </script>
+<script src="/assets/shared-background.js"></script>
 <script>
-  const glow = document.querySelector(".cursor-glow");
   const badge = document.getElementById("lab-badge");
-  const ambient = document.querySelector(".ambient");
   const contentList = document.getElementById("exp-list");
   const shell = document.querySelector(".shell");
   const logoTrigger = document.getElementById("logo-trigger");
+  const MOBILE_BLOB_SPEED_MULTIPLIER = 2;
   let keyBuffer = "";
   let logoBusy = false;
   let logoAutoTimer = null;
   let logoAutoDueAt = 0;
-  const LOGO_AUTO_MAX_DELAY_MS = 30 * 60 * 1000;
+  const LOGO_AUTO_MAX_DELAY_MS = 10 * 60 * 1000;
   const LOGO_AUTO_RETRY_MS = 1000;
-
-  window.addEventListener("mousemove", (event) => {
-    document.body.classList.add("moused");
-    if (!glow) return;
-    glow.style.left = `${event.clientX}px`;
-    glow.style.top = `${event.clientY}px`;
-  });
 
   function toggleLabMode() {
     document.body.classList.toggle("lab-mode");
@@ -690,64 +742,13 @@ layout: none
     }
   }
 
-  const spots = [];
-  const spotCount = 12;
-  const colors = [
-    "rgba(124, 255, 209, 0.22)",
-    "rgba(255, 184, 77, 0.22)",
-    "rgba(120, 166, 255, 0.2)",
-    "rgba(255, 122, 217, 0.2)",
-    "rgba(102, 193, 255, 0.2)"
-  ];
-
-  function createSpot() {
-    const el = document.createElement("span");
-    const size = rand(70, 200);
-    const color = colors[Math.floor(rand(0, colors.length))];
-    el.style.width = `${size}px`;
-    el.style.height = `${size}px`;
-    el.style.background = `radial-gradient(circle, ${color}, transparent 70%)`;
-    ambient.appendChild(el);
-
-    return {
-      el,
-      size,
-      xCenter: rand(0.15, 0.85),
-      xAmp: rand(0.08, 0.3),
-      yBase: rand(0.1, 0.9),
-      curve: rand(-0.35, 0.35),
-      speed: rand(0.022, 0.06),
-      phase: rand(0, 1),
-      driftAmpX: rand(0.01, 0.05),
-      driftAmpY: rand(0.01, 0.05),
-      driftFreqX: rand(0.03, 0.08),
-      driftFreqY: rand(0.02, 0.07),
-      driftPhaseX: rand(0, Math.PI * 2),
-      driftPhaseY: rand(0, Math.PI * 2),
-      wobbleAmpX: rand(0.008, 0.03),
-      wobbleAmpY: rand(0.008, 0.03),
-      wobbleFreqX: rand(0.15, 0.6),
-      wobbleFreqY: rand(0.12, 0.55),
-      wobblePhaseX: rand(0, Math.PI * 2),
-      wobblePhaseY: rand(0, Math.PI * 2),
-      shimmerSpeed: rand(0.2, 0.6),
-      shimmerPhase: rand(0, Math.PI * 2),
-      opacityBase: rand(0.25, 0.5),
-      opacityAmp: rand(0.12, 0.25)
-    };
-  }
-
-  for (let i = 0; i < spotCount; i += 1) {
-    spots.push(createSpot());
-  }
-
   const CONTENTS_ROOT = "./contents/";
   const CONTENTS_CONFIG_URL = "./contents-config.json";
 
   function clampRating(value) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return 1;
-    return Math.min(3, Math.max(1, Math.round(numeric)));
+    return Math.min(3, Math.max(0, Math.round(numeric)));
   }
 
   function normalizeContentKey(raw) {
@@ -900,12 +901,12 @@ layout: none
   function createStarsElement(rating) {
     const stars = document.createElement("span");
     stars.className = "entry-stars";
-    stars.setAttribute("aria-label", `${rating} of 3 stars`);
+    stars.setAttribute("aria-label", `${rating} of 3 rating glyphs`);
 
     for (let i = 1; i <= 3; i += 1) {
       const star = document.createElement("span");
       star.className = `star ${i <= rating ? "filled" : "empty"}`;
-      star.textContent = String.fromCharCode(9733);
+      star.textContent = i <= rating ? "◆" : "◇";
       stars.appendChild(star);
     }
 
@@ -939,9 +940,14 @@ layout: none
       const a = document.createElement("a");
       a.href = item.path;
       a.title = entryName;
+      const arrowEl = document.createElement("span");
+      arrowEl.className = "entry-arrow";
+      arrowEl.setAttribute("aria-hidden", "true");
+      arrowEl.textContent = ">";
       const titleEl = document.createElement("strong");
       titleEl.className = "entry-name";
       titleEl.textContent = entryName;
+      a.appendChild(arrowEl);
       a.appendChild(titleEl);
       a.appendChild(createStarsElement(rating));
       li.appendChild(a);
@@ -949,34 +955,39 @@ layout: none
     });
   }
 
-  function animateSpots(time) {
-    const t = time / 1000;
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-
-    spots.forEach((spot) => {
-      const theta = (t * spot.speed + spot.phase) * Math.PI * 2;
-      const progress = 0.5 - 0.5 * Math.cos(theta);
-      const wobbleX = spot.wobbleAmpX * Math.sin(t * spot.wobbleFreqX + spot.wobblePhaseX);
-      const wobbleY = spot.wobbleAmpY * Math.sin(t * spot.wobbleFreqY + spot.wobblePhaseY);
-      const driftX = spot.driftAmpX * Math.sin(t * spot.driftFreqX + spot.driftPhaseX);
-      const driftY = spot.driftAmpY * Math.sin(t * spot.driftFreqY + spot.driftPhaseY);
-      const x = spot.xCenter + spot.xAmp * Math.sin(theta) + wobbleX + driftX;
-      const parabola = (progress - 0.5) ** 2 * 4;
-      const y = clamp(spot.yBase + spot.curve * parabola + wobbleY + driftY, 0.05, 0.95);
-
-      const px = x * width;
-      const py = y * height;
-      spot.el.style.transform = `translate(${px - spot.size / 2}px, ${py - spot.size / 2}px)`;
-
-      const shimmer = spot.opacityBase + spot.opacityAmp * Math.sin(t * spot.shimmerSpeed + spot.shimmerPhase);
-      spot.el.style.opacity = clamp(shimmer, 0.15, 0.7);
+  if (typeof window.initSharedBackground === "function") {
+    window.initSharedBackground({
+      body: document.body,
+      cursorSize: 160,
+      cursorOpacity: 0.45,
+      overlayOpacityDesktop: 0.55,
+      overlayOpacityMobile: 0.82,
+      spotCountDesktop: 12,
+      spotCountMobile: 18,
+      paletteDesktop: [
+        "rgba(124, 255, 209, 0.22)",
+        "rgba(255, 184, 77, 0.22)",
+        "rgba(120, 166, 255, 0.2)",
+        "rgba(255, 122, 217, 0.2)",
+        "rgba(102, 193, 255, 0.2)"
+      ],
+      paletteMobile: [
+        "rgba(124, 255, 209, 0.36)",
+        "rgba(255, 184, 77, 0.34)",
+        "rgba(120, 166, 255, 0.32)",
+        "rgba(255, 122, 217, 0.28)",
+        "rgba(102, 193, 255, 0.3)"
+      ],
+      sizeDesktop: [70, 200],
+      sizeMobile: [95, 260],
+      opacityBaseDesktop: [0.25, 0.5],
+      opacityBaseMobile: [0.35, 0.62],
+      opacityAmpDesktop: [0.12, 0.25],
+      opacityAmpMobile: [0.18, 0.32],
+      speedScaleMobile: MOBILE_BLOB_SPEED_MULTIPLIER
     });
-
-    requestAnimationFrame(animateSpots);
   }
 
-  requestAnimationFrame(animateSpots);
   renderContents();
 
   if (logoTrigger) {

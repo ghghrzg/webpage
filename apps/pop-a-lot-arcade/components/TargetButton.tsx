@@ -16,6 +16,9 @@ const TargetButton: React.FC<Props> = ({ target, sizePx, zIndex = 10, onClick })
 
   const isStacked = target.stackCount > 1;
   const stroke = Math.max(2, sizePx * 0.06);
+  // Layers are offset down-right; shift the whole stack back by half the
+  // accumulated offset so target.x/target.y stays the visual footprint center.
+  const stackCenterShiftPx = Math.max(0, (target.stackCount - 1) * 2.5);
 
   // Function to render the SVG shape
   const renderShape = (opacity: number = 1) => {
@@ -74,7 +77,7 @@ const TargetButton: React.FC<Props> = ({ target, sizePx, zIndex = 10, onClick })
     }
   };
 
-  const containerClasses = `absolute cursor-pointer active-press select-none animate-pop-in`;
+  const containerClasses = `absolute cursor-pointer select-none`;
 
   return (
     <div
@@ -82,40 +85,42 @@ const TargetButton: React.FC<Props> = ({ target, sizePx, zIndex = 10, onClick })
       style={{
         left: `${target.x}%`,
         top: `${target.y}%`,
-        transform: 'translate(-50%, -50%)',
+        transform: `translate(-50%, -50%) translate(-${stackCenterShiftPx}px, -${stackCenterShiftPx}px)`,
         width: sizePx,
         height: sizePx,
         zIndex: zIndex + (isStacked ? 20 : 0),
       }}
       onMouseDown={handleClick}
     >
-      {[...Array(target.stackCount)].map((_, index) => {
-        const reversedIndex = (target.stackCount - 1) - index;
-        const offset = reversedIndex * 5; 
-        const opacity = 1; 
+      <div className="relative w-full h-full active-press animate-pop-in">
+        {[...Array(target.stackCount)].map((_, index) => {
+          const reversedIndex = (target.stackCount - 1) - index;
+          const offset = reversedIndex * 5; 
+          const opacity = 1; 
 
-        return (
-          <div 
-            key={reversedIndex} 
-            className="absolute top-0 left-0 transition-transform"
-            style={{
-               transform: `translate(${offset}px, ${offset}px)`,
-               zIndex: -reversedIndex, 
-               filter: reversedIndex > 0 ? 'brightness(0.8)' : 'none'
-            }}
-          >
-             {renderShape(opacity)}
-             
-             {reversedIndex === 0 && isStacked && (
-               <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
-                  <span className="text-white text-4xl font-black text-stroke-lg leading-none drop-shadow-md">
-                    {target.stackCount}x
-                  </span>
-               </div>
-             )}
-          </div>
-        );
-      })}
+          return (
+            <div 
+              key={reversedIndex} 
+              className="absolute top-0 left-0 transition-transform"
+              style={{
+                 transform: `translate(${offset}px, ${offset}px)`,
+                 zIndex: -reversedIndex, 
+                 filter: reversedIndex > 0 ? 'brightness(0.8)' : 'none'
+              }}
+            >
+               {renderShape(opacity)}
+               
+               {reversedIndex === 0 && isStacked && (
+                 <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
+                    <span className="text-white text-4xl font-black text-stroke-lg leading-none drop-shadow-md">
+                      {target.stackCount}x
+                    </span>
+                  </div>
+               )}
+                </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

@@ -1,0 +1,63 @@
+html.shared-bg-html {
+  -webkit-text-size-adjust: 100%;
+  background-color: var(--shared-bg0, #0b0d1a);
+  background:
+    radial-gradient(circle at 20% 10%, #252a5a 0, transparent 55%),
+    radial-gradient(circle at 80% 0%, #3a2f5a 0, transparent 50%),
+    linear-gradient(140deg, var(--shared-bg0, #0b0d1a), var(--shared-bg1, #14162b) 55%, var(--shared-bg2, #1d1f39));
+}
+
+body.shared-bg-body {
+  background: transparent;
+  position: relative;
+}
+
+body.shared-bg-body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 18% 16%, rgba(124, 255, 209, 0.22), transparent 46%),
+    radial-gradient(circle at 82% 10%, rgba(255, 184, 77, 0.16), transparent 44%),
+    radial-gradient(circle at 50% 88%, rgba(124, 150, 255, 0.16), transparent 42%);
+  opacity: var(--shared-overlay-opacity, 0.55);
+}
+
+body.shared-bg-body .ambient {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body.shared-bg-body .ambient span {
+  position: absolute;
+  border-radius: 999px;
+  opacity: 0.4;
+  will-change: transform, opacity;
+}
+
+body.shared-bg-body .cursor-glow {
+  position: fixed;
+  width: var(--shared-cursor-size, 160px);
+  height: var(--shared-cursor-size, 160px);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 255, 209, 0.08), transparent 70%);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 0;
+}
+
+body.shared-bg-body.moused .cursor-glow {
+  opacity: var(--shared-cursor-opacity, 0.45);
+}
+
+@media (max-width: 899px) {
+  body.shared-bg-body::before {
+    opacity: var(--shared-overlay-opacity-mobile, var(--shared-overlay-opacity, 0.55));
+  }
+}

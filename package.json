@@ -8,6 +8,7 @@
     "build:pop-a-lot-arcade": "npm --prefix apps/pop-a-lot-arcade run build",
     "build:all": "node scripts/build-all.mjs",
     "build:changed": "node scripts/build-changed.mjs",
-    "build:changed:all-if-none": "node scripts/build-changed.mjs --all-if-none"
+    "build:changed:all-if-none": "node scripts/build-changed.mjs --all-if-none",
+    "favicon:sync": "node scripts/inject-favicon.mjs"
   }
 }

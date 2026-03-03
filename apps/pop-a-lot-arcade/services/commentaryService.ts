@@ -99,7 +99,7 @@ const TIER_3_PHRASES = [ // Strong (10000 - 15000)
   { title: "Clutch", text: "Saved the {maxMultiplier}x combo. Clutch.", rare: true }
 ];
 
-const TIER_4_PHRASES = [ // Godlike (>= 15000)
+const TIER_4_PHRASES = [ // Godlike (>= 20000)
   { title: "ROBOT DETECTED", text: "ARE YOU A ROBOT?" },
   { title: "Unstoppable", text: "UNSTOPPABLE!" },
   { title: "CPU Overload", text: "My CPU is sweating." },
@@ -162,13 +162,13 @@ export const getGameCommentary = async (score: number, stats: GameStats, _mode: 
   }
 
   // Determine Tier
-  // Thresholds: 0-5000 (Bad), 5000-10000 (Normal), 10000-15000 (Strong), 15000+ (Godlike)
+  // Thresholds: 0-5000 (Bad), 5000-10000 (Normal), 10000-20000 (Strong), 20000+ (Godlike)
   
   if (score < 5000) {
     return getRandomPhrase(TIER_1_PHRASES, stats);
   } else if (score < 10000) {
     return getRandomPhrase(TIER_2_PHRASES, stats);
-  } else if (score < 15000) {
+  } else if (score < 20000) {
     return getRandomPhrase(TIER_3_PHRASES, stats);
   } else {
     return getRandomPhrase(TIER_4_PHRASES, stats);

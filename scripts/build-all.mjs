@@ -61,4 +61,16 @@ for (const appName of appDirs) {
   }
 }
 
+const faviconSyncResult = spawnSync(process.execPath, [path.join("scripts", "inject-favicon.mjs")], {
+  stdio: "inherit"
+});
+if (faviconSyncResult.error) {
+  console.error(`Failed to run favicon sync: ${faviconSyncResult.error.message}`);
+  process.exit(1);
+}
+if (faviconSyncResult.status !== 0) {
+  console.error("Favicon sync failed.");
+  process.exit(faviconSyncResult.status ?? 1);
+}
+
 console.log("\nAll app builds completed.");

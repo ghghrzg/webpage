@@ -1,9 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="shared-bg-html">
 <head>
   <meta charset="UTF-8" />
   <title>Time Since X</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="/lucsch_icon.png" />
+  <link rel="stylesheet" href="/assets/shared-background.css" />
   <style>
     :root {
       --bg0: #0b0d1a;
@@ -26,9 +29,6 @@
       margin: 0;
       padding: 0;
       min-height: 100%;
-      background: radial-gradient(circle at 20% 10%, #252a5a 0, transparent 55%),
-                  radial-gradient(circle at 80% 0%, #3a2f5a 0, transparent 50%),
-                  linear-gradient(140deg, var(--bg0), var(--bg1) 55%, var(--bg2));
       color: var(--ink);
       font-family: var(--display);
     }
@@ -38,37 +38,6 @@
       display: flex;
       justify-content: center;
       overflow-x: hidden;
-    }
-
-    .ambient {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .ambient span {
-      position: absolute;
-      border-radius: 999px;
-      opacity: 0.36;
-      will-change: transform, opacity;
-    }
-
-    .cursor-glow {
-      position: fixed;
-      width: 150px;
-      height: 150px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(124, 255, 209, 0.08), transparent 70%);
-      pointer-events: none;
-      transform: translate(-50%, -50%);
-      opacity: 0;
-      transition: opacity 0.2s ease;
-      z-index: 0;
-    }
-
-    body.moused .cursor-glow {
-      opacity: 0.35;
     }
 
     .wrap {
@@ -422,7 +391,7 @@
     }
   </style>
 </head>
-<body>
+<body class="shared-bg-body">
   <div class="ambient" aria-hidden="true"></div>
   <div class="cursor-glow" aria-hidden="true"></div>
   <main class="wrap">
@@ -527,16 +496,8 @@
     </section>
   </main>
 
+  <script src="/assets/shared-background.js"></script>
   <script>
-    const glow = document.querySelector(".cursor-glow");
-    const ambient = document.querySelector(".ambient");
-
-    window.addEventListener("mousemove", (event) => {
-      document.body.classList.add("moused");
-      if (!glow) return;
-      glow.style.left = `${event.clientX}px`;
-      glow.style.top = `${event.clientY}px`;
-    });
 
     const minYear = -10000;
     const maxYear = 5000000000;
@@ -999,88 +960,36 @@
       });
     });
 
-    function rand(min, max) {
-      return Math.random() * (max - min) + min;
-    }
-
-    const spots = [];
-    const spotCount = 10;
-    const colors = [
-      "rgba(124, 255, 209, 0.2)",
-      "rgba(255, 184, 77, 0.2)",
-      "rgba(120, 166, 255, 0.18)",
-      "rgba(255, 122, 217, 0.17)"
-    ];
-
-    function createSpot() {
-      const el = document.createElement("span");
-      const size = rand(70, 180);
-      const color = colors[Math.floor(rand(0, colors.length))];
-      el.style.width = `${size}px`;
-      el.style.height = `${size}px`;
-      el.style.background = `radial-gradient(circle, ${color}, transparent 70%)`;
-      ambient.appendChild(el);
-
-      return {
-        el,
-        size,
-        xCenter: rand(0.12, 0.88),
-        xAmp: rand(0.08, 0.28),
-        yBase: rand(0.1, 0.9),
-        curve: rand(-0.32, 0.32),
-        speed: rand(0.022, 0.055),
-        phase: rand(0, 1),
-        driftAmpX: rand(0.01, 0.05),
-        driftAmpY: rand(0.01, 0.05),
-        driftFreqX: rand(0.03, 0.08),
-        driftFreqY: rand(0.02, 0.07),
-        driftPhaseX: rand(0, Math.PI * 2),
-        driftPhaseY: rand(0, Math.PI * 2),
-        wobbleAmpX: rand(0.008, 0.03),
-        wobbleAmpY: rand(0.008, 0.03),
-        wobbleFreqX: rand(0.15, 0.6),
-        wobbleFreqY: rand(0.12, 0.55),
-        wobblePhaseX: rand(0, Math.PI * 2),
-        wobblePhaseY: rand(0, Math.PI * 2),
-        shimmerSpeed: rand(0.2, 0.6),
-        shimmerPhase: rand(0, Math.PI * 2),
-        opacityBase: rand(0.22, 0.48),
-        opacityAmp: rand(0.1, 0.22)
-      };
-    }
-
-    function animateSpots(time) {
-      const t = time / 1000;
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-
-      spots.forEach((spot) => {
-        const theta = (t * spot.speed + spot.phase) * Math.PI * 2;
-        const progress = 0.5 - 0.5 * Math.cos(theta);
-        const wobbleX = spot.wobbleAmpX * Math.sin(t * spot.wobbleFreqX + spot.wobblePhaseX);
-        const wobbleY = spot.wobbleAmpY * Math.sin(t * spot.wobbleFreqY + spot.wobblePhaseY);
-        const driftX = spot.driftAmpX * Math.sin(t * spot.driftFreqX + spot.driftPhaseX);
-        const driftY = spot.driftAmpY * Math.sin(t * spot.driftFreqY + spot.driftPhaseY);
-        const x = spot.xCenter + spot.xAmp * Math.sin(theta) + wobbleX + driftX;
-        const parabola = (progress - 0.5) ** 2 * 4;
-        const y = clamp(spot.yBase + spot.curve * parabola + wobbleY + driftY, 0.05, 0.95);
-
-        const px = x * width;
-        const py = y * height;
-        spot.el.style.transform = `translate(${px - spot.size / 2}px, ${py - spot.size / 2}px)`;
-
-        const shimmer = spot.opacityBase + spot.opacityAmp * Math.sin(t * spot.shimmerSpeed + spot.shimmerPhase);
-        spot.el.style.opacity = clamp(shimmer, 0.14, 0.68);
+    if (typeof window.initSharedBackground === "function") {
+      window.initSharedBackground({
+        body: document.body,
+        cursorSize: 150,
+        cursorOpacity: 0.35,
+        overlayOpacityDesktop: 0.55,
+        overlayOpacityMobile: 0.7,
+        spotCountDesktop: 10,
+        spotCountMobile: 14,
+        paletteDesktop: [
+          "rgba(124, 255, 209, 0.2)",
+          "rgba(255, 184, 77, 0.2)",
+          "rgba(120, 166, 255, 0.18)",
+          "rgba(255, 122, 217, 0.17)"
+        ],
+        paletteMobile: [
+          "rgba(124, 255, 209, 0.28)",
+          "rgba(255, 184, 77, 0.28)",
+          "rgba(120, 166, 255, 0.24)",
+          "rgba(255, 122, 217, 0.22)"
+        ],
+        sizeDesktop: [70, 180],
+        sizeMobile: [80, 220],
+        opacityBaseDesktop: [0.22, 0.48],
+        opacityBaseMobile: [0.28, 0.56],
+        opacityAmpDesktop: [0.1, 0.22],
+        opacityAmpMobile: [0.14, 0.26],
+        opacityFloor: 0.14,
+        opacityCeil: 0.68
       });
-
-      requestAnimationFrame(animateSpots);
-    }
-
-    if (ambient) {
-      for (let i = 0; i < spotCount; i += 1) {
-        spots.push(createSpot());
-      }
-      requestAnimationFrame(animateSpots);
     }
 
     setRandom();

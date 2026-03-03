@@ -53,6 +53,20 @@ function resolveNpmCommand() {
   throw new Error("npm.cmd not found. Install Node.js and ensure npm is available.");
 }
 
+function runFaviconSync() {
+  const result = spawnSync(process.execPath, [path.join("scripts", "inject-favicon.mjs")], {
+    stdio: "inherit"
+  });
+  if (result.error) {
+    console.error(`Failed to run favicon sync: ${result.error.message}`);
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    console.error("Favicon sync failed.");
+    process.exit(result.status ?? 1);
+  }
+}
+
 const trackedChanged = runGit(["diff", "--name-only", "--relative", "HEAD"]);
 const untracked = runGit(["ls-files", "--others", "--exclude-standard"]);
 const allChanged = [...new Set([...trackedChanged, ...untracked])];
@@ -73,6 +87,7 @@ let targets = Array.from(changedApps).sort((a, b) => a.localeCompare(b));
 if (targets.length === 0) {
   if (!buildAllIfNone) {
     console.log("No changed apps detected under apps/. Nothing to build.");
+    runFaviconSync();
     process.exit(0);
   }
   console.log("No changed apps detected. Falling back to all apps.");
@@ -102,5 +117,7 @@ for (const appName of targets) {
     process.exit(result.status ?? 1);
   }
 }
+
+runFaviconSync();
 
 console.log("\nBuild finished.");
