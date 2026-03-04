@@ -1344,13 +1344,10 @@ const App: React.FC = () => {
       <div className={`absolute inset-0 bg-pattern pointer-events-none ${gameState === GameState.PLAYING && IS_COARSE_POINTER ? 'bg-pattern-lite' : ''}`}></div>
 
       {showMobileUnmuteHint && IS_COARSE_POINTER && (
-        <div
-          className="absolute left-1/2 z-[110] -translate-x-1/2 pointer-events-none"
-          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}
-        >
+        <div className="absolute inset-0 z-[110] pointer-events-none flex items-center justify-center px-4">
           <div className="animate-pop-in">
-            <div className="bg-yellow-100 border-4 border-black rounded-2xl px-3.5 py-2 shadow-hard-lg animate-crazy-shake">
-              <p className="m-0 text-black text-sm font-black uppercase tracking-wide">try unmuting your phone</p>
+            <div className="bg-yellow-100 border-4 border-black rounded-2xl px-3.5 py-2 shadow-hard-lg animate-toast-wobble max-w-[340px]">
+              <p className="m-0 text-black text-sm font-black uppercase tracking-wide text-center">try unmuting your phone</p>
             </div>
           </div>
         </div>
@@ -1444,8 +1441,7 @@ const App: React.FC = () => {
                         backgroundColor: multiplier >= 10 ? undefined : (activeColorStreak || '#3B82F6')
                       }}
                     >
-                      <div className="absolute inset-0 w-full bg-white/30 animate-pulse"></div>
-                      <div className="absolute right-0 top-0 h-full w-2 bg-white/50"></div>
+                      <div className="absolute inset-0 w-full bg-white/14"></div>
                     </div>
                     <div className="absolute inset-0 flex justify-between px-2 items-center opacity-30 pointer-events-none">
                       {[...Array(6)].map((_, i) => <div key={i} className="h-full w-0.5 bg-black"></div>)}

@@ -124,6 +124,17 @@
       .animate-crazy-shake {
         animation: crazyShake 0.2s linear infinite;
       }
+
+      @keyframes toastWobble {
+        0% { transform: translateX(0) rotate(0deg); }
+        25% { transform: translateX(-1.4px) rotate(-1.2deg); }
+        50% { transform: translateX(0) rotate(0deg); }
+        75% { transform: translateX(1.4px) rotate(1.2deg); }
+        100% { transform: translateX(0) rotate(0deg); }
+      }
+      .animate-toast-wobble {
+        animation: toastWobble 0.85s ease-in-out infinite;
+      }
     </style>
   <script type="importmap">
 {
