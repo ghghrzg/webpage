@@ -22,6 +22,11 @@ const BURST_AUDIO_MAX_STEPS_TOUCH = 10;
 const BURST_AUDIO_MAX_STEPS_DESKTOP = 16;
 const BURST_AUDIO_STEP_MS_TOUCH = 42;
 const BURST_AUDIO_STEP_MS_DESKTOP = 48;
+const MOBILE_UNMUTE_HINT_MAX_DELAY_MS = 30_000;
+const MOBILE_UNMUTE_HINT_DURATION_MS = 2_400;
+const PAGE_BG_BASE = '#FCD34D';
+const PAGE_BG_START = '#CAA93E';
+const PAGE_BG_GAME_OVER = '#977F2E';
 
 const isPerfDebugEnabled = () => {
   if (typeof window === 'undefined') return false;
@@ -46,6 +51,7 @@ type RectLike = { left: number; right: number; top: number; bottom: number };
 type SpawnLayoutMetrics = {
   width: number;
   height: number;
+  minSpawnTop: number;
   maxSpawnBottom: number;
   uiNoSpawnZones: RectLike[];
 };
@@ -53,6 +59,7 @@ type SpawnLayoutMetrics = {
 type SpawnPerfSnapshot = {
   width: number;
   height: number;
+  minSpawnTop: number;
   maxSpawnBottom: number;
   noSpawnZoneCount: number;
 };
@@ -101,6 +108,39 @@ function loadMutedStateFromStorage(): boolean {
   }
 }
 
+function applyPageChromeColor(color: string) {
+  if (typeof document === 'undefined') return;
+  if (document.body) {
+    document.body.style.backgroundColor = color;
+  }
+
+  let tag = document.head?.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+  if (!tag && document.head) {
+    tag = document.createElement('meta');
+    tag.setAttribute('name', 'theme-color');
+    document.head.appendChild(tag);
+  }
+  if (tag) {
+    tag.setAttribute('content', color);
+  }
+}
+
+function measureSafeAreaInset(edge: 'top' | 'bottom'): number {
+  if (typeof document === 'undefined' || !document.body) return 0;
+  const probe = document.createElement('div');
+  probe.style.position = 'fixed';
+  probe.style.left = '0';
+  probe.style.width = '0';
+  probe.style.pointerEvents = 'none';
+  probe.style.visibility = 'hidden';
+  probe.style.setProperty(edge, '0');
+  probe.style.height = `env(safe-area-inset-${edge}, 0px)`;
+  document.body.appendChild(probe);
+  const inset = Math.max(0, probe.getBoundingClientRect().height);
+  probe.remove();
+  return inset;
+}
+
 const App: React.FC = () => {
   // Game Configuration
   const [currentMode, setCurrentMode] = useState<GameMode>('Arcade');
@@ -135,6 +175,7 @@ const App: React.FC = () => {
   const lastClickTimeRef = useRef<number>(0);
   
   const [isMuted, setIsMuted] = useState<boolean>(() => loadMutedStateFromStorage());
+  const [showMobileUnmuteHint, setShowMobileUnmuteHint] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<GameCommentary | null>(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const [audioPerfSnapshot, setAudioPerfSnapshot] = useState<AudioPerfSnapshot | null>(null);
@@ -164,6 +205,8 @@ const App: React.FC = () => {
   const timePanelMobileRef = useRef<HTMLDivElement>(null);
   const proQueueDesktopRef = useRef<HTMLDivElement>(null);
   const proQueueMobileRef = useRef<HTMLDivElement>(null);
+  const lastManualMuteAtRef = useRef<number | null>(null);
+  const mobileUnmuteHintTimerRef = useRef<number | null>(null);
   
   // Ref for active streak color to use in spawn logic without re-triggering effects
   const activeColorStreakRef = useRef<string | null>(null);
@@ -221,6 +264,38 @@ const App: React.FC = () => {
       setAudioPerfSnapshot(audioService.getPerfSnapshot());
     }, 500);
     return () => window.clearInterval(perfPollId);
+  }, []);
+
+  useEffect(() => {
+    const chromeColor =
+      gameState === GameState.START
+        ? PAGE_BG_START
+        : gameState === GameState.GAME_OVER
+          ? PAGE_BG_GAME_OVER
+          : PAGE_BG_BASE;
+    applyPageChromeColor(chromeColor);
+  }, [gameState]);
+
+  const showUnmutePhoneHint = useCallback(() => {
+    if (!IS_COARSE_POINTER) return;
+    if (mobileUnmuteHintTimerRef.current) {
+      window.clearTimeout(mobileUnmuteHintTimerRef.current);
+      mobileUnmuteHintTimerRef.current = null;
+    }
+    setShowMobileUnmuteHint(true);
+    mobileUnmuteHintTimerRef.current = window.setTimeout(() => {
+      setShowMobileUnmuteHint(false);
+      mobileUnmuteHintTimerRef.current = null;
+    }, MOBILE_UNMUTE_HINT_DURATION_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (mobileUnmuteHintTimerRef.current) {
+        window.clearTimeout(mobileUnmuteHintTimerRef.current);
+        mobileUnmuteHintTimerRef.current = null;
+      }
+    };
   }, []);
 
   const updateMultiplierDisplay = useCallback((nextValue: number, force: boolean = false, timestampMs?: number) => {
@@ -471,6 +546,17 @@ const App: React.FC = () => {
     const noSpawnPadY = mobileViewport
       ? Math.max(4, Math.min(12, targetSizePx * 0.14))
       : Math.max(6, Math.min(16, targetSizePx * 0.18));
+    const mobileTopSafeInset = mobileViewport
+      ? (() => {
+          const visualViewport = window.visualViewport;
+          const occludedTop = visualViewport
+            ? Math.max(0, visualViewport.offsetTop - playAreaTop)
+            : 0;
+          const measuredSafeTop = measureSafeAreaInset('top');
+          const inferredInset = occludedTop + 10;
+          return Math.max(8, Math.round(measuredSafeTop), Math.round(inferredInset));
+        })()
+      : 0;
     const mobileBottomSafeInset = mobileViewport
       ? (() => {
           const visualViewport = window.visualViewport;
@@ -539,10 +625,12 @@ const App: React.FC = () => {
       }
     }
 
-    const maxSpawnBottom = Math.max(0, height - mobileBottomSafeInset);
+    const minSpawnTop = Math.max(0, mobileTopSafeInset);
+    const maxSpawnBottom = Math.max(minSpawnTop, height - mobileBottomSafeInset);
     spawnLayoutMetricsRef.current = {
       width,
       height,
+      minSpawnTop,
       maxSpawnBottom,
       uiNoSpawnZones,
     };
@@ -550,9 +638,9 @@ const App: React.FC = () => {
     if (SHOW_SPAWN_DEBUG_FRAME) {
       const nextDebugRect = {
         left: 0,
-        top: 0,
+        top: minSpawnTop,
         width,
-        height: maxSpawnBottom,
+        height: Math.max(0, maxSpawnBottom - minSpawnTop),
       };
       setSpawnDebugRect((prev) => {
         if (
@@ -574,6 +662,7 @@ const App: React.FC = () => {
       setSpawnPerfSnapshot({
         width,
         height,
+        minSpawnTop,
         maxSpawnBottom,
         noSpawnZoneCount: uiNoSpawnZones.length,
       });
@@ -625,7 +714,7 @@ const App: React.FC = () => {
     const layoutMetrics = spawnLayoutMetricsRef.current;
     if (!layoutMetrics) return;
 
-    const { width, height, maxSpawnBottom, uiNoSpawnZones } = layoutMetrics;
+    const { width, height, minSpawnTop, maxSpawnBottom, uiNoSpawnZones } = layoutMetrics;
 
     setTargets(prev => {
       const config = MODE_CONFIG[currentMode];
@@ -728,21 +817,21 @@ const App: React.FC = () => {
             const halfSize = targetSizePx * 0.5;
             const minCenterX = halfSize + stackCenterShiftPx;
             const maxCenterX = width - halfSize - stackCenterShiftPx;
-            const minCenterY = halfSize + stackCenterShiftPx;
+            const minCenterY = minSpawnTop + halfSize + stackCenterShiftPx;
             const maxCenterY = maxSpawnBottom - halfSize - stackCenterShiftPx;
 
             if (maxCenterX > minCenterX) {
               const spawnFootprintCenterX = minCenterX + Math.random() * (maxCenterX - minCenterX);
               xPx = spawnFootprintCenterX;
             } else {
-              xPx = width * 0.5;
+              xPx = (minCenterX + maxCenterX) * 0.5;
             }
             
             if (maxCenterY > minCenterY) {
               const spawnFootprintCenterY = minCenterY + Math.random() * (maxCenterY - minCenterY);
               yPx = spawnFootprintCenterY;
             } else {
-              yPx = height * 0.5;
+              yPx = (minCenterY + maxCenterY) * 0.5;
             }
 
             // Boundary Check (Strict)
@@ -757,7 +846,7 @@ const App: React.FC = () => {
             if (
               targetBounds.left < 0 ||
               targetBounds.right > width ||
-              targetBounds.top < 0 ||
+              targetBounds.top < minSpawnTop ||
               targetBounds.bottom > maxSpawnBottom
             ) {
                 attempts++;
@@ -1223,8 +1312,21 @@ const App: React.FC = () => {
   }, [audioPerfSnapshot]);
 
   const toggleSound = () => {
+    const now = Date.now();
     const muted = audioService.toggleMute();
     setIsMuted(muted);
+
+    if (muted) {
+      lastManualMuteAtRef.current = now;
+      return;
+    }
+
+    const lastManualMuteAt = lastManualMuteAtRef.current;
+    lastManualMuteAtRef.current = null;
+    if (!IS_COARSE_POINTER || lastManualMuteAt == null) return;
+    if (now - lastManualMuteAt <= MOBILE_UNMUTE_HINT_MAX_DELAY_MS) {
+      showUnmutePhoneHint();
+    }
   };
 
   const handleBgClick = (e: React.MouseEvent) => {
@@ -1234,9 +1336,25 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="relative w-full h-screen bg-yellow-300 overflow-hidden select-none font-bold text-gray-900">
+    <div
+      className="relative w-full h-screen overflow-hidden select-none font-bold text-gray-900"
+      style={{ backgroundColor: PAGE_BG_BASE }}
+    >
       
       <div className={`absolute inset-0 bg-pattern pointer-events-none ${gameState === GameState.PLAYING && IS_COARSE_POINTER ? 'bg-pattern-lite' : ''}`}></div>
+
+      {showMobileUnmuteHint && IS_COARSE_POINTER && (
+        <div
+          className="absolute left-1/2 z-[110] -translate-x-1/2 pointer-events-none"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}
+        >
+          <div className="animate-pop-in">
+            <div className="bg-yellow-100 border-4 border-black rounded-2xl px-3.5 py-2 shadow-hard-lg animate-crazy-shake">
+              <p className="m-0 text-black text-sm font-black uppercase tracking-wide">try unmuting your phone</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {PERF_DEBUG_ENABLED && (
         <div className="absolute left-2 bottom-2 z-[120] pointer-events-none bg-black/80 text-white text-[10px] leading-tight rounded-md border border-white/30 px-2 py-1.5 font-mono whitespace-nowrap">
