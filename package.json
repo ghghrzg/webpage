@@ -4,8 +4,11 @@
   "scripts": {
     "install:all": "node scripts/install-all.mjs",
     "install:pop-a-lot-arcade": "npm --prefix apps/pop-a-lot-arcade install",
+    "install:traffic-light-crossing": "npm --prefix apps/traffic-light-crossing install",
     "dev:pop-a-lot-arcade": "npm --prefix apps/pop-a-lot-arcade run dev",
+    "dev:traffic-light-crossing": "npm --prefix apps/traffic-light-crossing run dev",
     "build:pop-a-lot-arcade": "npm --prefix apps/pop-a-lot-arcade run build",
+    "build:traffic-light-crossing": "npm --prefix apps/traffic-light-crossing run build",
     "build:all": "node scripts/build-all.mjs",
     "build:changed": "node scripts/build-changed.mjs",
     "build:changed:all-if-none": "node scripts/build-changed.mjs --all-if-none",

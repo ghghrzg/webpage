@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#07110f" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="/lucsch_icon.png" />
+  <title>Life Drift</title>
+  <style>
+    :root {
+      --bg: #06100e;
+      --panel: rgba(8, 19, 17, 0.78);
+      --panel-strong: rgba(12, 27, 24, 0.92);
+      --line: rgba(191, 219, 254, 0.18);
+      --ink: #ecfeff;
+      --muted: #9fb7b3;
+      --accent: #7cffd1;
+      --accent-b: #ffcb77;
+      --accent-c: #ff7ab6;
+      --mono: "Cascadia Code", "Fira Code", "Menlo", "Consolas", monospace;
+      --ui: "Inter", "Segoe UI", system-ui, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--ui);
+      overflow: hidden;
+    }
+
+    body {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      background:
+        radial-gradient(circle at 23% 18%, rgba(124, 255, 209, 0.11), transparent 24rem),
+        radial-gradient(circle at 86% 26%, rgba(255, 203, 119, 0.1), transparent 28rem),
+        radial-gradient(circle at 58% 94%, rgba(255, 122, 182, 0.1), transparent 30rem),
+        linear-gradient(180deg, #081714 0%, #050b0a 100%);
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 5;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 1rem;
+      align-items: center;
+      min-height: 74px;
+      padding: max(0.85rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0.85rem max(1rem, env(safe-area-inset-left));
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(2, 6, 5, 0.76), rgba(2, 6, 5, 0.38));
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: clamp(1.35rem, 3vw, 2rem);
+      letter-spacing: 0;
+      line-height: 1.05;
+    }
+
+    .subtitle {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem 0.75rem;
+      margin-top: 0.35rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+
+    .subtitle span {
+      white-space: nowrap;
+    }
+
+    .home {
+      color: var(--muted);
+      text-decoration: none;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.6rem 0.72rem;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .home:hover {
+      color: var(--ink);
+      border-color: rgba(124, 255, 209, 0.42);
+    }
+
+    .stage {
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+      cursor: crosshair;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .grain,
+    .scan {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .grain {
+      opacity: 0.18;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 26px 26px;
+      mask-image: radial-gradient(circle at center, black, transparent 88%);
+    }
+
+    .scan {
+      background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.035), transparent);
+      background-size: 100% 9px;
+      mix-blend-mode: screen;
+      opacity: 0.2;
+    }
+
+    .hud {
+      position: absolute;
+      left: max(1rem, env(safe-area-inset-left));
+      bottom: max(1rem, env(safe-area-inset-bottom));
+      z-index: 4;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(84px, 1fr));
+      gap: 0.55rem;
+      width: min(780px, calc(100% - 2rem));
+    }
+
+    .meter {
+      min-height: 64px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.64rem 0.7rem;
+      background: var(--panel);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+      backdrop-filter: blur(14px);
+    }
+
+    .meter span {
+      display: block;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+    }
+
+    .meter strong {
+      display: block;
+      margin-top: 0.28rem;
+      font-family: var(--mono);
+      font-size: 1.12rem;
+      line-height: 1;
+    }
+
+    .controls {
+      position: absolute;
+      right: max(1rem, env(safe-area-inset-right));
+      bottom: max(1rem, env(safe-area-inset-bottom));
+      z-index: 4;
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-strong);
+      backdrop-filter: blur(14px);
+    }
+
+    button {
+      min-width: 42px;
+      min-height: 42px;
+      border: 1px solid rgba(124, 255, 209, 0.22);
+      border-radius: 8px;
+      background: rgba(124, 255, 209, 0.08);
+      color: var(--ink);
+      font: 700 0.9rem var(--mono);
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: rgba(124, 255, 209, 0.54);
+      background: rgba(124, 255, 209, 0.15);
+    }
+
+    .toast {
+      position: absolute;
+      top: 1rem;
+      left: 50%;
+      z-index: 6;
+      width: min(420px, calc(100% - 2rem));
+      transform: translate(-50%, -140%);
+      border: 1px solid rgba(255, 203, 119, 0.36);
+      border-radius: 8px;
+      padding: 0.78rem 0.9rem;
+      color: #fff8e8;
+      background: rgba(42, 27, 7, 0.9);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      text-align: center;
+      opacity: 0;
+      transition: transform 220ms ease, opacity 220ms ease;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      transform: translate(-50%, 0);
+      opacity: 1;
+    }
+
+    .mouse-ghost {
+      position: absolute;
+      z-index: 3;
+      width: 56px;
+      height: 30px;
+      transform: translate(-50%, -50%) scale(0);
+      opacity: 0;
+      pointer-events: none;
+      filter: drop-shadow(0 0 18px rgba(255, 203, 119, 0.38));
+      transition: transform 260ms ease, opacity 260ms ease;
+    }
+
+    .mouse-ghost.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .mouse-ghost::before,
+    .mouse-ghost::after {
+      content: "";
+      position: absolute;
+      background: var(--accent-b);
+    }
+
+    .mouse-ghost::before {
+      left: 9px;
+      top: 8px;
+      width: 32px;
+      height: 18px;
+      border-radius: 50% 44% 46% 50%;
+      box-shadow:
+        24px -8px 0 -6px var(--accent-b),
+        25px 9px 0 -7px var(--accent-b);
+    }
+
+    .mouse-ghost::after {
+      left: 2px;
+      top: 17px;
+      width: 20px;
+      height: 2px;
+      border-radius: 999px;
+      transform: rotate(26deg);
+      transform-origin: right center;
+      opacity: 0.75;
+    }
+
+    @media (max-width: 820px) {
+      .topbar {
+        grid-template-columns: 1fr;
+        gap: 0.7rem;
+      }
+
+      .home {
+        justify-self: start;
+      }
+
+      .hud {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 62px);
+      }
+
+      .controls {
+        left: max(1rem, env(safe-area-inset-left));
+        right: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Life Drift</h1>
+      <div class="subtitle">
+        <span>conway-ish cellular ecology</span>
+        <span>5 species / 5 biomes</span>
+        <span>mouse field: gentle</span>
+      </div>
+    </div>
+    <a class="home" href="../index.html">../home</a>
+  </header>
+
+  <main class="stage" id="stage" aria-label="Life Drift cellular automaton">
+    <canvas id="life"></canvas>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="scan" aria-hidden="true"></div>
+    <div class="toast" id="toast">die maus hat ein nest gefunden</div>
+    <div class="mouse-ghost" id="mouseGhost" aria-hidden="true"></div>
+
+    <section class="hud" aria-label="Simulation status">
+      <div class="meter"><span>generation</span><strong id="generation">0</strong></div>
+      <div class="meter"><span>alive</span><strong id="alive">0</strong></div>
+      <div class="meter"><span>drift</span><strong id="drift">0%</strong></div>
+      <div class="meter"><span>species</span><strong id="species">none</strong></div>
+      <div class="meter"><span>biome</span><strong id="biome">none</strong></div>
+      <div class="meter"><span>mood</span><strong id="mood">quiet</strong></div>
+    </section>
+
+    <nav class="controls" aria-label="Controls">
+      <button id="pauseBtn" type="button" title="Pause oder weiter">II</button>
+      <button id="seedBtn" type="button" title="Neu aussaeen">R</button>
+      <button id="clearBtn" type="button" title="Ausduennen">C</button>
+    </nav>
+  </main>
+
+  <script>
+    const stage = document.getElementById("stage");
+    const canvas = document.getElementById("life");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const generationEl = document.getElementById("generation");
+    const aliveEl = document.getElementById("alive");
+    const driftEl = document.getElementById("drift");
+    const speciesEl = document.getElementById("species");
+    const biomeEl = document.getElementById("biome");
+    const moodEl = document.getElementById("mood");
+    const toast = document.getElementById("toast");
+    const mouseGhost = document.getElementById("mouseGhost");
+    const pauseBtn = document.getElementById("pauseBtn");
+    const seedBtn = document.getElementById("seedBtn");
+    const clearBtn = document.getElementById("clearBtn");
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const cell = 6;
+    const stepMs = prefersReducedMotion ? 150 : 58;
+    const calmEggMs = 4800;
+    const SPECIES = [
+      { name: "moss", color: [113, 224, 158], accent: [176, 255, 202], mobility: 0.002, mutation: 0.0004 },
+      { name: "ember", color: [255, 145, 88], accent: [255, 209, 119], mobility: 0.004, mutation: 0.0008 },
+      { name: "glass", color: [125, 192, 255], accent: [206, 237, 255], mobility: 0.001, mutation: 0.0002 },
+      { name: "tide", color: [95, 235, 222], accent: [142, 255, 245], mobility: 0.006, mutation: 0.0006 },
+      { name: "spore", color: [238, 119, 202], accent: [255, 185, 235], mobility: 0.003, mutation: 0.001 }
+    ];
+    const BIOMES = [
+      { name: "reef", tint: [30, 89, 75], birth: 0.018, crowd: 0, flowX: 0.15, flowY: -0.05, likes: 3 },
+      { name: "ash", tint: [94, 50, 32], birth: -0.008, crowd: 0.018, flowX: 0.3, flowY: 0.12, likes: 1 },
+      { name: "glass", tint: [42, 70, 112], birth: -0.014, crowd: -0.012, flowX: -0.08, flowY: 0.06, likes: 2 },
+      { name: "mire", tint: [45, 93, 47], birth: 0.012, crowd: 0.006, flowX: -0.2, flowY: 0.18, likes: 0 },
+      { name: "bloom", tint: [92, 40, 86], birth: 0.024, crowd: 0.024, flowX: 0.04, flowY: -0.24, likes: 4 }
+    ];
+    const PATTERNS = [
+      { name: "block", cells: [[0, 0], [1, 0], [0, 1], [1, 1]], weight: 2 },
+      { name: "beehive", cells: [[1, 0], [2, 0], [0, 1], [3, 1], [1, 2], [2, 2]], weight: 2 },
+      { name: "loaf", cells: [[1, 0], [2, 0], [0, 1], [3, 1], [1, 2], [3, 2], [2, 3]], weight: 1 },
+      { name: "blinker", cells: [[0, 0], [1, 0], [2, 0]], weight: 4 },
+      { name: "toad", cells: [[1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1]], weight: 3 },
+      { name: "beacon", cells: [[0, 0], [1, 0], [0, 1], [3, 2], [2, 3], [3, 3]], weight: 2 },
+      { name: "glider", cells: [[1, 0], [2, 1], [0, 2], [1, 2], [2, 2]], weight: 5 },
+      { name: "lwss", cells: [[1, 0], [4, 0], [0, 1], [0, 2], [4, 2], [0, 3], [1, 3], [2, 3], [3, 3]], weight: 2 },
+      { name: "r-pentomino", cells: [[1, 0], [2, 0], [0, 1], [1, 1], [1, 2]], weight: 1 }
+    ];
+    const mouse = {
+      x: -1000,
+      y: -1000,
+      px: -1000,
+      py: -1000,
+      speed: 0,
+      lastMove: 0,
+      inside: false
+    };
+
+    let cols = 0;
+    let rows = 0;
+    let current = new Uint8Array(0);
+    let next = new Uint8Array(0);
+    let age = new Uint8Array(0);
+    let nextAge = new Uint8Array(0);
+    let biome = new Uint8Array(0);
+    let moved = new Uint8Array(0);
+    let movedAge = new Uint8Array(0);
+    let generation = 0;
+    let alive = 0;
+    let dominantSpecies = 0;
+    let dominantBiome = 0;
+    let running = true;
+    let lastStep = 0;
+    let lastFrame = 0;
+    let eggArmed = true;
+    let eggPulse = 0;
+    let toastTimer = 0;
+
+    function rand(max) {
+      return Math.floor(Math.random() * max);
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function index(x, y) {
+      return y * cols + x;
+    }
+
+    function wrap(value, max) {
+      if (value < 0) return max - 1;
+      if (value >= max) return 0;
+      return value;
+    }
+
+    function eachNeighbor(x, y, fn) {
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          if (dx === 0 && dy === 0) continue;
+          fn(wrap(x + dx, cols), wrap(y + dy, rows));
+        }
+      }
+    }
+
+    function chooseSpecies(preferred) {
+      if (preferred >= 1 && preferred <= SPECIES.length && Math.random() < 0.9) return preferred;
+      return 1 + rand(SPECIES.length);
+    }
+
+    function mutateSpecies(type, strength) {
+      const trait = SPECIES[type - 1] || SPECIES[0];
+      if (Math.random() > trait.mutation + strength) return type;
+      const direction = Math.random() < 0.5 ? -1 : 1;
+      return 1 + ((type - 1 + direction + SPECIES.length) % SPECIES.length);
+    }
+
+    function weightedPattern() {
+      const total = PATTERNS.reduce((sum, pattern) => sum + pattern.weight, 0);
+      let pick = Math.random() * total;
+      for (const pattern of PATTERNS) {
+        pick -= pattern.weight;
+        if (pick <= 0) return pattern;
+      }
+      return PATTERNS[0];
+    }
+
+    function transformPatternCell(px, py, rotation, mirror) {
+      let x = mirror ? -px : px;
+      let y = py;
+      for (let n = 0; n < rotation; n += 1) {
+        const nextX = -y;
+        y = x;
+        x = nextX;
+      }
+      return [x, y];
+    }
+
+    function stampPattern(cx, cy, pattern, speciesHint, rotation = rand(4), mirror = Math.random() < 0.5) {
+      const type = chooseSpecies(speciesHint);
+      pattern.cells.forEach(([px, py]) => {
+        const [tx, ty] = transformPatternCell(px, py, rotation, mirror);
+        const x = wrap(cx + tx, cols);
+        const y = wrap(cy + ty, rows);
+        const i = index(x, y);
+        current[i] = type;
+        age[i] = 2 + rand(18);
+      });
+    }
+
+    function assignBiomes() {
+      const anchors = Array.from({ length: Math.max(7, Math.round((cols + rows) / 38)) }, () => ({
+        x: rand(cols),
+        y: rand(rows),
+        type: rand(BIOMES.length),
+        power: 0.7 + Math.random() * 1.9
+      }));
+
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < cols; x += 1) {
+          const wave =
+            Math.sin(x * 0.055 + y * 0.032) +
+            Math.sin((x - y) * 0.041) * 0.82 +
+            Math.cos(x * 0.018 - y * 0.073) * 0.72;
+          let bestType = Math.abs(Math.floor((wave + 3) * 1.18)) % BIOMES.length;
+          let bestScore = -Infinity;
+
+          anchors.forEach((anchor) => {
+            const dx = Math.min(Math.abs(x - anchor.x), cols - Math.abs(x - anchor.x));
+            const dy = Math.min(Math.abs(y - anchor.y), rows - Math.abs(y - anchor.y));
+            const score = anchor.power - Math.sqrt(dx * dx + dy * dy) / 32;
+            if (score > bestScore && score > -0.25) {
+              bestScore = score;
+              bestType = anchor.type;
+            }
+          });
+
+          biome[index(x, y)] = bestType;
+        }
+      }
+    }
+
+    function softSeed(cx, cy, radius, density, mode, speciesHint = 0) {
+      const gx = Math.round(cx / cell);
+      const gy = Math.round(cy / cell);
+      const gr = Math.max(2, Math.round(radius / cell));
+      for (let y = gy - gr; y <= gy + gr; y += 1) {
+        for (let x = gx - gr; x <= gx + gr; x += 1) {
+          const dx = x - gx;
+          const dy = y - gy;
+          const dist = Math.sqrt(dx * dx + dy * dy) / gr;
+          if (dist > 1) continue;
+          const falloff = (1 - dist) * density;
+          if (Math.random() > falloff) continue;
+          const i = index(wrap(x, cols), wrap(y, rows));
+          if (mode === "thin") {
+            current[i] = Math.random() < 0.64 ? 0 : current[i];
+            age[i] = current[i] ? age[i] : 0;
+          } else {
+            const b = BIOMES[biome[i]] || BIOMES[0];
+            current[i] = chooseSpecies(speciesHint || b.likes + 1);
+            age[i] = Math.max(age[i], 1);
+          }
+        }
+      }
+    }
+
+    function makeNest(cx, cy) {
+      const gx = Math.round(cx / cell);
+      const gy = Math.round(cy / cell);
+      const pattern = [
+        [-5, -1], [-4, -1], [-3, -1], [-2, 0], [-1, 1], [0, 1], [1, 1],
+        [2, 0], [3, -1], [4, -1], [5, -1], [-3, 2], [-2, 3], [0, 3],
+        [2, 3], [3, 2], [-1, -3], [0, -3], [1, -3], [-2, -2], [2, -2]
+      ];
+      pattern.forEach(([x, y]) => {
+        const i = index(wrap(gx + x, cols), wrap(gy + y, rows));
+        current[i] = 5;
+        age[i] = 9;
+      });
+      softSeed(cx, cy, 116, 0.19, "grow", 5);
+      eggPulse = 1;
+      mouseGhost.style.left = `${cx}px`;
+      mouseGhost.style.top = `${cy}px`;
+      mouseGhost.classList.add("show");
+      toast.classList.add("show");
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => {
+        toast.classList.remove("show");
+        mouseGhost.classList.remove("show");
+      }, 2300);
+    }
+
+    function seedWorld() {
+      generation = 0;
+      eggPulse = 0;
+      eggArmed = true;
+      current.fill(0);
+      age.fill(0);
+      assignBiomes();
+
+      const patternCount = Math.max(90, Math.round((cols * rows) / 310));
+      for (let n = 0; n < patternCount; n += 1) {
+        const margin = 8;
+        const x = margin + rand(Math.max(1, cols - margin * 2));
+        const y = margin + rand(Math.max(1, rows - margin * 2));
+        const localBiome = BIOMES[biome[index(x, y)]] || BIOMES[0];
+        stampPattern(x, y, weightedPattern(), localBiome.likes + 1);
+      }
+
+      const gardens = Math.max(6, Math.round((cols + rows) / 44));
+      for (let n = 0; n < gardens; n += 1) {
+        const cx = rand(cols);
+        const cy = rand(rows);
+        const localBiome = BIOMES[biome[index(cx, cy)]] || BIOMES[0];
+        for (let p = 0; p < 9; p += 1) {
+          stampPattern(
+            wrap(cx + rand(17) - 8, cols),
+            wrap(cy + rand(17) - 8, rows),
+            weightedPattern(),
+            localBiome.likes + 1
+          );
+        }
+      }
+
+      for (let n = 0; n < Math.round(cols * rows * 0.0018); n += 1) {
+        const i = rand(cols * rows);
+        current[i] = chooseSpecies(BIOMES[biome[i]].likes + 1);
+        age[i] = 1;
+      }
+    }
+
+    function resize() {
+      const rect = stage.getBoundingClientRect();
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      cols = Math.max(28, Math.floor(rect.width / cell));
+      rows = Math.max(22, Math.floor(rect.height / cell));
+      current = new Uint8Array(cols * rows);
+      next = new Uint8Array(cols * rows);
+      age = new Uint8Array(cols * rows);
+      nextAge = new Uint8Array(cols * rows);
+      biome = new Uint8Array(cols * rows);
+      moved = new Uint8Array(cols * rows);
+      movedAge = new Uint8Array(cols * rows);
+      seedWorld();
+    }
+
+    function mouseInfluenceAt(x, y) {
+      if (!mouse.inside) return 0;
+      const cx = x * cell + cell / 2;
+      const cy = y * cell + cell / 2;
+      const dx = cx - mouse.x;
+      const dy = cy - mouse.y;
+      const radius = 125 + clamp(mouse.speed * 0.9, 0, 90);
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radius * radius) return 0;
+      return 1 - Math.sqrt(distSq) / radius;
+    }
+
+    function flowLife(now) {
+      if (generation % 8 !== 0) return;
+
+      moved.fill(0);
+      movedAge.fill(0);
+      const gust = Math.sin(now * 0.00023) * 0.55;
+      const swirl = Math.cos(now * 0.00019) * 0.45;
+
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < cols; x += 1) {
+          const i = index(x, y);
+          const type = current[i];
+          if (!type) continue;
+
+          const b = BIOMES[biome[i]];
+          const trait = SPECIES[type - 1] || SPECIES[0];
+          const field = mouseInfluenceAt(x, y);
+          const chance = trait.mobility + field * 0.012 + (b.likes + 1 === type ? 0.001 : 0);
+          let target = i;
+
+          if (Math.random() < chance) {
+            let dx = Math.sign(b.flowX + gust + (Math.random() - 0.5) * 1.4);
+            let dy = Math.sign(b.flowY + swirl + (Math.random() - 0.5) * 1.4);
+            if (field > 0.12 && mouse.inside) {
+              const cx = x * cell + cell / 2;
+              const cy = y * cell + cell / 2;
+              dx = Math.sign((cx - mouse.x) * 0.018 + b.flowX + (Math.random() - 0.5) * 1.1);
+              dy = Math.sign((cy - mouse.y) * 0.018 + b.flowY + (Math.random() - 0.5) * 1.1);
+            }
+            target = index(wrap(x + dx, cols), wrap(y + dy, rows));
+          }
+
+          if (!moved[target]) {
+            moved[target] = type;
+            movedAge[target] = age[i];
+          } else if (age[i] > movedAge[target] && Math.random() < 0.18) {
+            moved[target] = type;
+            movedAge[target] = age[i];
+          } else if (!moved[i]) {
+            moved[i] = type;
+            movedAge[i] = age[i];
+          }
+        }
+      }
+
+      const currentSwap = current;
+      current = moved;
+      moved = currentSwap;
+      const ageSwap = age;
+      age = movedAge;
+      movedAge = ageSwap;
+    }
+
+    function step(now) {
+      next.fill(0);
+      nextAge.fill(0);
+      alive = 0;
+      let drift = 0;
+      const speciesCounts = new Array(SPECIES.length).fill(0);
+      const biomeCounts = new Array(BIOMES.length).fill(0);
+
+      const calm = mouse.inside ? clamp((now - mouse.lastMove) / calmEggMs, 0, 1) : 0;
+      const moving = clamp(mouse.speed / 46, 0, 1);
+      const weather = Math.sin(now * 0.00031) * 0.006 + Math.sin(now * 0.00007 + 2.3) * 0.004;
+
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < cols; x += 1) {
+          const i = index(x, y);
+          const neighborTypes = new Array(SPECIES.length).fill(0);
+          let neighbors = 0;
+          let oldestType = 1;
+          let oldestAge = -1;
+
+          eachNeighbor(x, y, (nx, ny) => {
+            const ni = index(nx, ny);
+            const type = current[ni];
+            if (!type) return;
+            neighbors += 1;
+            neighborTypes[type - 1] += 1;
+            if (age[ni] > oldestAge) {
+              oldestAge = age[ni];
+              oldestType = type;
+            }
+          });
+
+          let dominantType = oldestType;
+          let dominantCount = 0;
+          neighborTypes.forEach((count, typeIndex) => {
+            if (count > dominantCount || (count === dominantCount && Math.random() < 0.35)) {
+              dominantCount = count;
+              dominantType = typeIndex + 1;
+            }
+          });
+
+          const field = mouseInfluenceAt(x, y);
+          const b = BIOMES[biome[i]] || BIOMES[0];
+          const aliveNow = current[i] > 0;
+          const typeNow = aliveNow ? current[i] : dominantType;
+          const liked = b.likes + 1 === typeNow ? 0.012 : -0.006;
+          const mouseBirth = field * (0.018 + calm * 0.014);
+          const mouseShelter = field * (0.014 + moving * 0.008);
+          drift += field;
+
+          let born =
+            !aliveNow &&
+            (
+              neighbors === 3 ||
+              (neighbors === 2 && Math.random() < Math.max(0, 0.008 + b.birth * 0.22 + liked * 0.35 + weather + mouseBirth * 0.55)) ||
+              (neighbors === 4 && Math.random() < Math.max(0, 0.004 + b.crowd * 0.18 + field * 0.004))
+            );
+
+          let survives =
+            aliveNow &&
+            (
+              neighbors === 2 ||
+              neighbors === 3 ||
+              (neighbors === 1 && Math.random() < mouseShelter * 0.12) ||
+              (neighbors === 4 && Math.random() < Math.max(0, 0.035 + b.crowd * 0.22 + liked * 0.5 + field * 0.006))
+            );
+
+          if (aliveNow && neighbors >= 5 && Math.random() < 0.72 - b.crowd * 0.4 - mouseShelter) survives = false;
+
+          const liveNext = born || survives;
+          if (liveNext) {
+            const inherited = aliveNow ? typeNow : chooseSpecies(dominantType);
+            const mutationPressure = field * 0.004 + Math.max(0, weather) * 0.04 + (b.likes + 1 === inherited ? 0 : 0.001);
+            const nextType = mutateSpecies(inherited, mutationPressure);
+            next[i] = nextType;
+            nextAge[i] = aliveNow ? Math.min(255, age[i] + 1) : 1 + rand(5);
+            alive += 1;
+            speciesCounts[nextType - 1] += 1;
+            biomeCounts[biome[i]] += 1;
+          } else {
+            nextAge[i] = Math.max(0, age[i] - 7);
+          }
+        }
+      }
+
+      const currentSwap = current;
+      current = next;
+      next = currentSwap;
+      const ageSwap = age;
+      age = nextAge;
+      nextAge = ageSwap;
+      generation += 1;
+      flowLife(now);
+
+      if (generation % 96 === 0) {
+        const x = 6 + rand(Math.max(1, cols - 12));
+        const y = 6 + rand(Math.max(1, rows - 12));
+        const i = index(x, y);
+        const pattern = Math.random() < 0.72 ? PATTERNS[6] : weightedPattern();
+        stampPattern(x, y, pattern, BIOMES[biome[i]].likes + 1);
+      }
+
+      if (generation % 1200 === 0) assignBiomes();
+
+      dominantSpecies = speciesCounts.indexOf(Math.max(...speciesCounts));
+      dominantBiome = biomeCounts.indexOf(Math.max(...biomeCounts));
+
+      if (mouse.inside && calm >= 1 && eggArmed) {
+        makeNest(mouse.x, mouse.y);
+        eggArmed = false;
+      }
+
+      if (mouse.inside && moving > 0.25) eggArmed = true;
+
+      generationEl.textContent = String(generation);
+      aliveEl.textContent = String(alive);
+      driftEl.textContent = `${Math.round(clamp(drift / (cols * rows) * 900, 0, 99))}%`;
+      speciesEl.textContent = SPECIES[dominantSpecies]?.name || "mixed";
+      biomeEl.textContent = BIOMES[dominantBiome]?.name || "mixed";
+      moodEl.textContent = calm > 0.88 ? "listening" : moving > 0.48 ? "windy" : alive < cols * rows * 0.055 ? "seeding" : "evolving";
+    }
+
+    function draw(now) {
+      const rect = stage.getBoundingClientRect();
+      ctx.fillStyle = "#050b0a";
+      ctx.fillRect(0, 0, rect.width, rect.height);
+
+      const pulse = eggPulse;
+      eggPulse = Math.max(0, eggPulse - 0.018);
+
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < cols; x += 1) {
+          const b = BIOMES[biome[index(x, y)]];
+          const shimmer = 0.032 + Math.sin(now * 0.0004 + x * 0.08 + y * 0.05) * 0.008;
+          ctx.fillStyle = `rgba(${b.tint[0]}, ${b.tint[1]}, ${b.tint[2]}, ${shimmer})`;
+          ctx.fillRect(x * cell, y * cell, cell, cell);
+        }
+      }
+
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < cols; x += 1) {
+          const i = index(x, y);
+          const a = age[i];
+          if (a <= 0) continue;
+          const field = mouseInfluenceAt(x, y);
+          const type = current[i] || ((a > 0 && generation % 3 === 0) ? 1 : 0);
+          const trait = SPECIES[Math.max(0, type - 1)] || SPECIES[0];
+          const b = BIOMES[biome[i]] || BIOMES[0];
+          const warm = Math.min(1, a / 80);
+          const glow = Math.min(1, field * 0.8 + pulse * 0.35);
+          const color = warm > 0.72 ? trait.accent : trait.color;
+          const r = Math.round(color[0] + glow * 52 + b.tint[0] * 0.08);
+          const g = Math.round(color[1] + glow * 26 + b.tint[1] * 0.08);
+          const blue = Math.round(color[2] + glow * 16 + b.tint[2] * 0.08);
+          const alpha = current[i] ? 0.82 + glow * 0.12 : Math.min(0.24, a / 95);
+          const inset = current[i] ? (type === 3 ? 0.8 : 1.15) : 2.5;
+          ctx.fillStyle = `rgba(${r}, ${g}, ${blue}, ${alpha})`;
+          ctx.fillRect(x * cell + inset, y * cell + inset, cell - inset * 2, cell - inset * 2);
+          if (current[i] && type === 4 && a > 14 && (x + y + generation) % 9 === 0) {
+            ctx.fillStyle = "rgba(210, 255, 249, 0.42)";
+            ctx.fillRect(x * cell + 1, y * cell + 1, 2, 2);
+          }
+        }
+      }
+
+      if (mouse.inside) {
+        const calm = clamp((now - mouse.lastMove) / calmEggMs, 0, 1);
+        const radius = 125 + calm * 50 + Math.sin(now / 360) * 6;
+        const gradient = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, radius);
+        gradient.addColorStop(0, `rgba(124, 255, 209, ${0.12 + calm * 0.1})`);
+        gradient.addColorStop(0.42, "rgba(255, 203, 119, 0.055)");
+        gradient.addColorStop(1, "rgba(124, 255, 209, 0)");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(mouse.x, mouse.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function loop(now) {
+      const elapsed = now - lastFrame;
+      lastFrame = now;
+      mouse.speed *= Math.pow(0.82, elapsed / 16.67);
+
+      if (running && now - lastStep >= stepMs) {
+        step(now);
+        lastStep = now;
+      }
+      draw(now);
+      window.requestAnimationFrame(loop);
+    }
+
+    stage.addEventListener("pointermove", (event) => {
+      const rect = stage.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const dx = x - mouse.x;
+      const dy = y - mouse.y;
+      mouse.px = mouse.x;
+      mouse.py = mouse.y;
+      mouse.x = x;
+      mouse.y = y;
+      mouse.speed = clamp(Math.hypot(dx, dy), 0, 80);
+      mouse.lastMove = performance.now();
+      mouse.inside = true;
+
+      if (mouse.speed > 4 && Math.random() < 0.025) {
+        const i = index(clamp(Math.round(x / cell), 0, cols - 1), clamp(Math.round(y / cell), 0, rows - 1));
+        stampPattern(
+          clamp(Math.round(x / cell), 0, cols - 1),
+          clamp(Math.round(y / cell), 0, rows - 1),
+          Math.random() < 0.7 ? PATTERNS[6] : weightedPattern(),
+          BIOMES[biome[i]].likes + 1
+        );
+      }
+    });
+
+    stage.addEventListener("pointerenter", () => {
+      mouse.inside = true;
+      mouse.lastMove = performance.now();
+    });
+
+    stage.addEventListener("pointerleave", () => {
+      mouse.inside = false;
+      eggArmed = true;
+    });
+
+    stage.addEventListener("pointerdown", (event) => {
+      const rect = stage.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const i = index(clamp(Math.round(x / cell), 0, cols - 1), clamp(Math.round(y / cell), 0, rows - 1));
+      if (event.altKey) {
+        softSeed(x, y, 132, 0.2, "thin", BIOMES[biome[i]].likes + 1);
+      } else {
+        for (let n = 0; n < 5; n += 1) {
+          stampPattern(
+            wrap(Math.round(x / cell) + rand(15) - 7, cols),
+            wrap(Math.round(y / cell) + rand(15) - 7, rows),
+            weightedPattern(),
+            BIOMES[biome[i]].likes + 1
+          );
+        }
+      }
+    });
+
+    pauseBtn.addEventListener("click", () => {
+      running = !running;
+      pauseBtn.textContent = running ? "II" : ">";
+    });
+
+    seedBtn.addEventListener("click", seedWorld);
+
+    clearBtn.addEventListener("click", () => {
+      softSeed(stage.clientWidth / 2, stage.clientHeight / 2, Math.max(stage.clientWidth, stage.clientHeight), 0.52, "thin");
+      generation = 0;
+    });
+
+    window.addEventListener("resize", resize);
+    resize();
+    window.requestAnimationFrame((now) => {
+      lastFrame = now;
+      lastStep = now;
+      window.requestAnimationFrame(loop);
+    });
+  </script>
+</body>
+</html>

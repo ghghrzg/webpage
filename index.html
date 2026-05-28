@@ -189,6 +189,11 @@ layout: none
       white-space: nowrap;
     }
 
+    body.shared-bg-body > .logo-flyer.logo-flyer {
+      position: fixed;
+      z-index: 20;
+    }
+
     #logo-trigger .bracket,
     .logo-flyer .bracket {
       color: var(--accent);
@@ -607,7 +612,6 @@ layout: none
   let logoBusy = false;
   let logoAutoTimer = null;
   let logoAutoDueAt = 0;
-  let fixedAnchorsVisualViewport = null;
   const LOGO_AUTO_MAX_DELAY_MS = 10 * 60 * 1000;
   const LOGO_AUTO_RETRY_MS = 1000;
 
@@ -669,32 +673,6 @@ layout: none
     };
   }
 
-  function doesFixedAnchorToVisualViewport() {
-    if (fixedAnchorsVisualViewport != null) return fixedAnchorsVisualViewport;
-    if (!window.visualViewport || !document.body) {
-      fixedAnchorsVisualViewport = true;
-      return fixedAnchorsVisualViewport;
-    }
-
-    const probe = document.createElement("div");
-    probe.style.position = "fixed";
-    probe.style.left = "0";
-    probe.style.top = "0";
-    probe.style.width = "0";
-    probe.style.height = "0";
-    probe.style.opacity = "0";
-    probe.style.pointerEvents = "none";
-    document.body.appendChild(probe);
-
-    const probeRect = probe.getBoundingClientRect();
-    probe.remove();
-    const tolerance = 0.75;
-    fixedAnchorsVisualViewport =
-      Math.abs(probeRect.left) <= tolerance &&
-      Math.abs(probeRect.top) <= tolerance;
-    return fixedAnchorsVisualViewport;
-  }
-
   async function runAutoHopWhenReady() {
     if (document.hidden || logoBusy) {
       logoAutoTimer = window.setTimeout(runAutoHopWhenReady, LOGO_AUTO_RETRY_MS);
@@ -718,9 +696,6 @@ layout: none
     logoBusy = true;
 
     const viewport = getViewportMetrics();
-    const fixedIsVisual = doesFixedAnchorToVisualViewport();
-    const anchorOffsetX = fixedIsVisual ? 0 : viewport.offsetLeft;
-    const anchorOffsetY = fixedIsVisual ? 0 : viewport.offsetTop;
 
     const rect = logoTrigger.getBoundingClientRect();
     const flyer = logoTrigger.cloneNode(true);
@@ -728,16 +703,16 @@ layout: none
     flyer.removeAttribute("tabindex");
     flyer.removeAttribute("aria-label");
     flyer.classList.add("logo-flyer");
-    flyer.style.left = `${rect.left + anchorOffsetX}px`;
-    flyer.style.top = `${rect.top + anchorOffsetY}px`;
+    flyer.style.left = `${rect.left}px`;
+    flyer.style.top = `${rect.top}px`;
     document.body.appendChild(flyer);
     logoTrigger.style.visibility = "hidden";
 
     const shellRect = shell ? shell.getBoundingClientRect() : rect;
-    const startTop = rect.top + anchorOffsetY;
-    const shellTop = shellRect.top + anchorOffsetY;
+    const startTop = rect.top;
+    const shellTop = shellRect.top;
     const drift = rand(-30, 30);
-    const offscreenY = viewport.height + anchorOffsetY + 140;
+    const offscreenY = viewport.height + 140;
     const toBottom = offscreenY - startTop;
     const fullPeakY = Math.min(-235, shellTop - startTop - rect.height - 34);
     const basePeakY = fullPeakY * 0.5;
@@ -762,7 +737,7 @@ layout: none
         { duration: liftDuration, easing: "linear", fill: "forwards" }
       ).finished;
 
-      flyer.style.zIndex = "0";
+      flyer.style.zIndex = "4";
       await flyer.animate(
         [
           { transform: `translate(${peakX}px, ${peakY}px) rotate(${peakRotate}deg)` },
