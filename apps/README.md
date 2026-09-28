@@ -12,6 +12,14 @@ For `pop-a-lot-arcade`:
 - source: `apps/pop-a-lot-arcade`
 - output: `contents/pop_a_lot`
 
+For `blckjck-trainer` (European Blackjack Trainer):
+- source: `apps/blckjck-trainer`
+- output: `contents/blckjck_trainer`
+- local development: `npm run dev:blckjck-trainer`
+- tests: `npm run test:blckjck-trainer`
+- build: `npm run build:blckjck-trainer`
+- details and validated/assumed rules: [app README](blckjck-trainer/README.md)
+
 Root helper commands:
 - `npm run install:all`
 - `npm run build:all`

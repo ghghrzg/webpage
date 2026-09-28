@@ -1,0 +1,51 @@
+- main [ref=e2]:
+  - link "/home" [ref=e3] [cursor=pointer]:
+    - /url: /
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - paragraph [ref=e6]: browser mini-game
+      - heading "3-Puck Football" [level=1] [ref=e7]
+      - paragraph [ref=e8]: "Single-player time trial: zieh einen Puck nach hinten und schnips ihn nach vorne durchs Nadelöhr. Das Ziel ist das rechte Tor, so schnell und sauber wie moeglich."
+    - generic [ref=e9]:
+      - button "Regeln ausblenden" [expanded] [ref=e10] [cursor=pointer]
+      - button "Neues Spiel" [ref=e11] [cursor=pointer]
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e15]: Timer
+        - strong [ref=e16]: 00:00.0
+      - generic [ref=e17]:
+        - generic [ref=e18]: Schuesse
+        - generic [ref=e19]:
+          - generic [ref=e20]: Versuche
+          - strong [ref=e21]: "0"
+        - generic [ref=e22]:
+          - generic [ref=e23]: Strafe
+          - strong [ref=e24]: +0.0s
+      - generic [ref=e25]:
+        - generic [ref=e26]: Status
+        - paragraph [ref=e27]: Bereit. Zieh einen Puck nach hinten und schnips ihn auf das rechte Tor.
+      - generic [ref=e28]:
+        - heading "Regeln" [level=2] [ref=e29]
+        - paragraph [ref=e30]: "Zieh einen Puck in die Gegenrichtung und lass los. Der Schuss geht 180 Grad gedreht nach vorne. Ein gueltiger Zug fuehrt zwischen den beiden anderen Pucks hindurch. Kollisionen kosten 2,0 Sekunden Strafe, ungueltige Zuege 3,0 Sekunden. Der Timer startet mit dem ersten Schuss. Der Farbpunkt pulsiert zwischen rot und gruen: je gruener beim Loslassen, desto praeziser und konstanter der Schuss."
+    - region "single player challenge" [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - paragraph [ref=e34]: single player challenge
+          - paragraph [ref=e35]: Rueckwaerts ziehen, am grueneren Timing loslassen, durch die Luecke kommen und rechts vollenden.
+        - generic [ref=e36]:
+          - generic [ref=e37]: A
+          - generic [ref=e38]: B
+          - generic [ref=e39]: C
+      - application "3-Puck Football Spielfeld" [ref=e41]:
+        - generic [ref=e45]: Start
+        - generic [ref=e47]: Ziel
+        - button "Puck A" [ref=e48]:
+          - generic [ref=e49]: A
+        - button "Puck B" [ref=e50]:
+          - generic [ref=e51]: B
+        - button "Puck C" [ref=e52]:
+          - generic [ref=e53]: C
+      - generic [ref=e54]:
+        - paragraph [ref=e55]: Der Lauf endet, sobald ein Puck sauber im rechten Tor landet.
+        - paragraph [ref=e56]: Je weniger Schuesse und Strafsekunden, desto besser der Run.

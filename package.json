@@ -2,6 +2,10 @@
   "name": "webpage-content-workspace",
   "private": true,
   "scripts": {
+    "install:blckjck-trainer": "npm --prefix apps/blckjck-trainer install",
+    "dev:blckjck-trainer": "npm --prefix apps/blckjck-trainer run dev",
+    "build:blckjck-trainer": "npm --prefix apps/blckjck-trainer run build",
+    "test:blckjck-trainer": "npm --prefix apps/blckjck-trainer test",
     "install:all": "node scripts/install-all.mjs",
     "install:pop-a-lot-arcade": "npm --prefix apps/pop-a-lot-arcade install",
     "install:traffic-light-crossing": "npm --prefix apps/traffic-light-crossing install",

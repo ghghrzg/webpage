@@ -1,0 +1,51 @@
+- main [ref=e2]:
+  - link "/home" [ref=e3] [cursor=pointer]:
+    - /url: /
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - paragraph [ref=e6]: browser mini-game
+      - heading "3-Puck Football" [level=1] [ref=e7]
+      - paragraph [ref=e8]: Schiebe einen Puck so, dass er zwischen den beiden anderen hindurchgeht. Gelingt der Move, bleibst du am Zug. Im gegnerischen Tor gibt es einen Punkt.
+    - generic [ref=e9]:
+      - button "Regeln ausblenden" [expanded] [ref=e10] [cursor=pointer]
+      - button "Neues Spiel" [ref=e11] [cursor=pointer]
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e15]: Aktueller Spieler
+        - strong [ref=e16]: Spieler 1 -> rechts
+      - generic [ref=e17]:
+        - generic [ref=e18]: Punktestand
+        - generic [ref=e19]:
+          - generic [ref=e20]: Spieler 1
+          - strong [ref=e21]: "0"
+        - generic [ref=e22]:
+          - generic [ref=e23]: Spieler 2
+          - strong [ref=e24]: "0"
+      - generic [ref=e25]:
+        - generic [ref=e26]: Status
+        - paragraph [ref=e27]: Spiel bereit. Spieler 1 startet nach rechts.
+      - generic [ref=e28]:
+        - heading "Regeln" [level=2] [ref=e29]
+        - paragraph [ref=e30]: Schiebe einen Puck zwischen den anderen beiden hindurch. Gelingt es, darfst du weiterspielen. Misslingt es, ist der andere Spieler dran. Triffst du ins gegnerische Tor, bekommst du einen Punkt.
+    - region "tabletop rules, arcade feel" [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - paragraph [ref=e34]: tabletop rules, arcade feel
+          - paragraph [ref=e35]: Ziehe einen Puck mit Maus oder Touch und lass ihn in Zugrichtung los.
+        - generic [ref=e36]:
+          - generic [ref=e37]: A
+          - generic [ref=e38]: B
+          - generic [ref=e39]: C
+      - application "3-Puck Football Spielfeld" [ref=e41]:
+        - generic [ref=e45]: Ziel P2
+        - generic [ref=e47]: Ziel P1
+        - button "Puck A" [ref=e48]:
+          - generic [ref=e49]: A
+        - button "Puck B" [ref=e50]:
+          - generic [ref=e51]: B
+        - button "Puck C" [ref=e52]:
+          - generic [ref=e53]: C
+      - generic [ref=e54]:
+        - paragraph [ref=e55]: Spieler 1 greift nach rechts an. Spieler 2 greift nach links an.
+        - paragraph [ref=e56]: Gueltige Zuege behalten den Ballbesitz, ungueltige geben ihn ab.

@@ -1,0 +1,305 @@
+import { test, expect, type Page } from "@playwright/test";
+import {
+  freshState,
+  parseBackup,
+  STORAGE_KEY,
+  type AppState,
+} from "../src/core/storage";
+import { deal, newGame, type Game } from "../src/core/engine";
+import type { Rank } from "../src/core/cards";
+
+function fixture(ranks: Rank[]): Game {
+  const game = newGame(() => 0.3);
+  const upcoming = ranks.map(
+    (rank) =>
+      game.shoe.splice(
+        game.shoe.findIndex((c) => c.rank === rank),
+        1,
+      )[0],
+  );
+  game.shoe.push(...upcoming.reverse());
+  return deal(game, 10);
+}
+async function seed(page: Page, state: AppState) {
+  await page.addInitScript(
+    ({ key, state }) => {
+      if (!localStorage.getItem(key))
+        localStorage.setItem(key, JSON.stringify(state));
+    },
+    { key: STORAGE_KEY, state },
+  );
+}
+async function saved(page: Page): Promise<AppState> {
+  return page.evaluate(
+    (key) => JSON.parse(localStorage.getItem(key)!),
+    STORAGE_KEY,
+  );
+}
+async function nav(page: Page, tab: string) {
+  await page.locator(`nav:visible a[href="#${tab}"]`).click();
+}
+test("initial cards and all actions fit above the mobile navigation", async ({
+  page,
+}, info) => {
+  await page.goto("./");
+  const actions = await page
+    .locator(".training-panel .action-grid")
+    .boundingBox();
+  const navigation =
+    info.project.name === "mobile"
+      ? await page.locator(".mobile-nav").boundingBox()
+      : null;
+  expect(actions!.y + actions!.height).toBeLessThan(navigation?.y ?? 1000);
+  await page.screenshot({
+    path: `test-results/first-screen-${info.project.name}.png`,
+  });
+});
+test("auto-advance, uncertain drill exit and keyboard shortcuts work", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.keyboard.press("u");
+  await page.keyboard.press("s");
+  await expect(
+    page.getByRole("button", { name: "Nächste Hand" }),
+  ).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Nächste Hand" })).toHaveCount(
+    0,
+  );
+  await page.getByRole("tab", { name: /^Unsicher/ }).click();
+  await expect(page.locator(".difficult-row")).toHaveCount(1);
+  await page.getByRole("button", { name: /gegen .* trainieren/ }).click();
+  await expect(page.getByText("GEZIELTER DRILL")).toBeVisible();
+  await page.getByRole("tab", { name: "Üben", exact: true }).click();
+  await expect(page.getByText("GEZIELTER DRILL")).toHaveCount(0);
+  await page.getByRole("button", { name: "Einstellungen öffnen" }).click();
+  await page.getByLabel("Automatisch nächste Trainingshand").check();
+  await page.getByRole("button", { name: "Schließen", exact: true }).click();
+  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await expect(
+    page.getByRole("button", { name: "Nächste Hand" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Nächste Hand" })).toHaveCount(
+    0,
+    { timeout: 4000 },
+  );
+});
+test("training marks without hints, counts answers once, and persists across reload", async ({
+  page,
+}, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("./");
+  await expect(
+    page.getByRole("heading", { name: "Gute Entscheidungen." }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Bin unsicher" }).click();
+  await expect(
+    page.getByText("Gemerkt. Entscheide dich trotzdem selbst."),
+  ).toBeVisible();
+  expect(Object.keys((await saved(page)).training.difficult)).toHaveLength(1);
+  expect(Object.keys((await saved(page)).training.decisions)).toHaveLength(0);
+  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await expect(
+    page.getByRole("button", { name: "Nächste Hand" }),
+  ).toBeVisible();
+  const before = await saved(page);
+  expect(Object.values(before.training.decisions)[0].seen).toBe(1);
+  await page.reload();
+  expect((await saved(page)).training).toEqual(before.training);
+  await page.screenshot({
+    path: `test-results/training-${info.project.name}.png`,
+    fullPage: true,
+  });
+  await nav(page, "stats");
+  await expect(page.getByText("Wie sicher ist dein Wissen?")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+test("all pages and light theme fit narrow screens; strategy cells are inspectable", async ({
+  page,
+}, info) => {
+  await page.goto("./");
+  await page.getByRole("tab", { name: "Lernen", exact: true }).click();
+  await page.getByLabel("Handgruppe").selectOption("traps");
+  await expect(page.getByText("Achtung, europäische Regeln.")).toBeVisible();
+  await nav(page, "strategy");
+  await page.getByRole("button", { name: "Paare", exact: true }).click();
+  await page
+    .getByRole("button", { name: "8, 8 gegen 10: Hit", exact: true })
+    .click();
+  await expect(
+    page.getByText(/8, 8 gegen 10: Hit. ENHC-Ausnahme/),
+  ).toBeVisible();
+  await page.getByLabel("Lernstand", { exact: true }).check();
+  for (const tab of ["train", "play", "strategy", "stats"]) {
+    await nav(page, tab);
+    if (info.project.name === "mobile")
+      await page.setViewportSize({ width: 320, height: 740 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
+  await page.getByRole("button", { name: "Einstellungen öffnen" }).click();
+  await page.getByLabel("Erscheinungsbild").selectOption("light");
+  await page.getByRole("button", { name: "Schließen", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await nav(page, "strategy");
+  await page.screenshot({
+    path: `test-results/strategy-light-${info.project.name}.png`,
+    fullPage: true,
+  });
+});
+test("play warning preserves original intent and resumes exactly after reload", async ({
+  page,
+}, info) => {
+  const state = freshState();
+  state.game = fixture(["8", "K", "8", "2", "A"]);
+  await seed(page, state);
+  await page.goto("./#play");
+  await page.getByRole("button", { name: "Bin unsicher" }).click();
+  await page.getByRole("button", { name: "Split – Teilen" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect((await saved(page)).game.bankroll).toBe(990);
+  await page.getByRole("button", { name: "Hit übernehmen" }).click();
+  const progressed = await saved(page);
+  expect(progressed.freePlay).toMatchObject({
+    correct: 0,
+    wrong: 1,
+    adherence: 1,
+    warnings: 1,
+    accepted: 1,
+  });
+  expect(progressed.freePlay.history[0]).toMatchObject({
+    attempted: "P",
+    recommended: "H",
+    executed: "H",
+    unsure: true,
+  });
+  expect(progressed.game.hands[0].cards).toHaveLength(3);
+  await page.reload();
+  expect((await saved(page)).game).toEqual(progressed.game);
+  await page.screenshot({
+    path: `test-results/play-${info.project.name}.png`,
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await expect(page.getByText("RUNDE ABGESCHLOSSEN")).toBeVisible();
+  expect((await saved(page)).game.bankroll).toBe(990);
+  expect((await saved(page)).freePlay.rounds).toBe(1);
+});
+test("after-action and disabled warnings execute immediately; insurance settles correctly", async ({
+  page,
+}) => {
+  const state = freshState();
+  state.settings.strategyWarnings = "after";
+  state.game = fixture(["10", "6", "6", "2", "K", "4"]);
+  await seed(page, state);
+  await page.goto("./#play");
+  await page.getByRole("button", { name: "Hit – Karte ziehen" }).click();
+  await expect(page.getByText(/Deine letzte Entscheidung: Hit/)).toBeVisible();
+  expect((await saved(page)).game.hands[0].cards).toHaveLength(3);
+  expect((await saved(page)).freePlay.wrong).toBe(1);
+  await page.getByRole("button", { name: "Einstellungen öffnen" }).click();
+  await page.getByLabel("Strategiehinweise im Spiel").selectOption("disabled");
+  await page.getByRole("button", { name: "Schließen", exact: true }).click();
+  await page.getByRole("button", { name: "Hit – Karte ziehen" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect((await saved(page)).freePlay.wrong).toBe(2);
+  const insurance = freshState();
+  insurance.game = fixture(["10", "A", "8", "K"]);
+  await page.evaluate(
+    ({ key, state }) => localStorage.setItem(key, JSON.stringify(state)),
+    { key: STORAGE_KEY, state: insurance },
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "Versichern", exact: true }).click();
+  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await expect(page.getByText("RUNDE ABGESCHLOSSEN")).toBeVisible();
+  expect((await saved(page)).game.bankroll).toBe(1000);
+});
+test("export, validated import, and cancelled reset retain progress", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: "Bin unsicher" }).click();
+  await page.getByRole("button", { name: "Einstellungen öffnen" }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "JSON exportieren" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^blackjack-trainer-/);
+  const fs = await import("node:fs/promises");
+  const backup = parseBackup(
+    await fs.readFile((await download.path())!, "utf8"),
+  );
+  expect(Object.keys(backup.training.difficult)).toHaveLength(1);
+  await page
+    .getByRole("button", { name: "Alles zurücksetzen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Abbrechen", exact: true }).click();
+  expect(Object.keys((await saved(page)).training.difficult)).toHaveLength(1);
+  await page.getByLabel("Backup-Datei importieren").setInputFiles({
+    name: "bad.json",
+    mimeType: "application/json",
+    buffer: Buffer.from('{"schemaVersion":99}'),
+  });
+  await expect(page.getByRole("alert")).toContainText("kein gültiges");
+  expect(Object.keys((await saved(page)).training.difficult)).toHaveLength(1);
+  backup.game.bankroll = 1230;
+  await page.getByLabel("Backup-Datei importieren").setInputFiles({
+    name: "backup.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(backup)),
+  });
+  await page
+    .getByRole("button", { name: "Spielstand übernehmen", exact: true })
+    .click();
+  expect((await saved(page)).game.bankroll).toBe(1230);
+});
+test("casino test hides all correctness feedback until the 100th decision", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.getByRole("tab", { name: "Casino-Test" }).click();
+  for (let i = 0; i < 100; i++) {
+    await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+    if (i < 99) {
+      await expect(page.getByText("Entscheidung gespeichert.")).toBeVisible();
+      await expect(
+        page.getByText("Richtig entschieden.", { exact: true }),
+      ).toHaveCount(0);
+      await page.getByRole("button", { name: "Weiter", exact: true }).click();
+    }
+  }
+  await expect(
+    page.getByText("100 ENTSCHEIDUNGEN · DEIN ERGEBNIS"),
+  ).toBeVisible();
+  expect((await saved(page)).sessions[0].total).toBe(100);
+});
+test("installed service worker supports a complete offline reload", async ({
+  page,
+  context,
+}) => {
+  await page.goto("./");
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await page.reload();
+  await expect
+    .poll(() => page.evaluate(() => !!navigator.serviceWorker.controller))
+    .toBe(true);
+  await context.setOffline(true);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Gute Entscheidungen." }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await expect(
+    page.getByRole("button", { name: "Nächste Hand" }),
+  ).toBeVisible();
+  await nav(page, "play");
+  await page.getByRole("button", { name: "Karten geben" }).click();
+  expect((await saved(page)).game.round).toBe(1);
+});

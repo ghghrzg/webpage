@@ -1,0 +1,45 @@
+name: Blackjack Trainer checks
+
+on:
+  push:
+    paths:
+      - 'apps/blckjck-trainer/**'
+      - 'contents/blckjck_trainer/**'
+      - '.github/workflows/blackjack-checks.yml'
+  pull_request:
+    paths:
+      - 'apps/blckjck-trainer/**'
+      - 'contents/blckjck_trainer/**'
+      - '.github/workflows/blackjack-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/blckjck-trainer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/blckjck-trainer/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e -- --workers=2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blackjack-trainer-static
+          path: contents/blckjck_trainer
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: blackjack-test-results
+          path: apps/blckjck-trainer/test-results

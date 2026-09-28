@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="de" class="shared-bg-html">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#74f5be" />
+  <title>3-Puck Football</title>
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="/lucsch_icon.png" />
+  <link rel="stylesheet" href="/assets/shared-background.css" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body class="shared-bg-body">
+  <div class="ambient" aria-hidden="true"></div>
+  <div class="cursor-glow" aria-hidden="true"></div>
+
+  <main class="app-shell">
+    <a class="home-link" href="/">/home</a>
+
+    <header class="hero panel">
+      <div class="hero-copy">
+        <p class="eyebrow">browser mini-game</p>
+        <h1>3-Puck Football</h1>
+        <p class="subtitle">
+          Single-player time trial: zieh einen Puck nach hinten und schnips ihn nach vorne
+          durchs Nadelöhr. Das Ziel ist das rechte Tor, so schnell und sauber wie moeglich.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <button class="control-btn control-btn-secondary" id="toggle-rules" type="button" aria-expanded="true">
+          Regeln ausblenden
+        </button>
+        <button class="control-btn" id="new-game" type="button">Neues Spiel</button>
+      </div>
+    </header>
+
+    <section class="game-grid" id="three-puck-football">
+      <aside class="panel sidebar">
+        <div class="card">
+          <span class="card-label">Timer</span>
+          <strong class="card-value card-mono" id="run-timer">00:00.0</strong>
+        </div>
+
+        <div class="card score-card compact">
+          <span class="card-label">Schuesse</span>
+          <div class="score-row">
+            <span>Versuche</span>
+            <strong id="shot-count">0</strong>
+          </div>
+          <div class="score-row">
+            <span>Strafe</span>
+            <strong id="penalty-time">+0.0s</strong>
+          </div>
+        </div>
+
+        <div class="card status-card" id="status-card" data-tone="info">
+          <span class="card-label">Status</span>
+          <p id="status-message" aria-live="polite">Bereit. Zieh einen Puck nach hinten und schnips ihn auf das rechte Tor.</p>
+        </div>
+
+        <section class="rules-card" id="rules-card">
+          <h2>Regeln</h2>
+          <p>
+            Zieh einen Puck in die Gegenrichtung und lass los. Der Schuss geht 180 Grad
+            gedreht nach vorne. Ein gueltiger Zug fuehrt zwischen den beiden anderen Pucks
+            hindurch. Kollisionen kosten 2,0 Sekunden Strafe, ungueltige Zuege 3,0 Sekunden.
+            Der Timer startet mit dem ersten Schuss. Der Farbpunkt pulsiert zwischen rot
+            und gruen: je gruener beim Loslassen, desto praeziser und konstanter der Schuss.
+          </p>
+        </section>
+      </aside>
+
+      <section class="panel stage-panel" aria-labelledby="field-title">
+        <div class="stage-topbar">
+          <div>
+            <p class="eyebrow" id="field-title">single player challenge</p>
+            <p class="stage-hint">Rueckwaerts ziehen, am grueneren Timing loslassen, durch die Luecke kommen und rechts vollenden.</p>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span class="legend-chip puck-a">A</span>
+            <span class="legend-chip puck-b">B</span>
+            <span class="legend-chip puck-c">C</span>
+          </div>
+        </div>
+
+        <div class="field-frame">
+          <div class="pitch" id="game-field" role="application" aria-label="3-Puck Football Spielfeld">
+            <div class="pitch-center-line" aria-hidden="true"></div>
+            <div class="pitch-center-circle" aria-hidden="true"></div>
+            <div class="goal goal-left" aria-hidden="true"><span>Start</span></div>
+            <div class="goal goal-right" aria-hidden="true"><span>Ziel</span></div>
+            <div class="aim-line" id="aim-line" hidden></div>
+            <div class="drag-point" id="drag-point" hidden></div>
+            <div class="aim-cone" id="aim-cone" hidden></div>
+            <div class="accuracy-dot" id="accuracy-dot" hidden></div>
+            <div class="release-popup" id="release-popup" hidden></div>
+
+            <button class="puck puck-a" data-puck="0" type="button" aria-label="Puck A">
+              <span>A</span>
+            </button>
+            <button class="puck puck-b" data-puck="1" type="button" aria-label="Puck B">
+              <span>B</span>
+            </button>
+            <button class="puck puck-c" data-puck="2" type="button" aria-label="Puck C">
+              <span>C</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="stage-footer">
+          <p>Der Lauf endet, sobald ein Puck sauber im rechten Tor landet.</p>
+          <p>Je weniger Schuesse und Strafsekunden, desto besser der Run.</p>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="/assets/shared-background.js"></script>
+  <script src="./game.js"></script>
+</body>
+</html>
