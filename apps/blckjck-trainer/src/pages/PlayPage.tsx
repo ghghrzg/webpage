@@ -28,6 +28,8 @@ import {
 import { ACTION_LABEL, getAdvice, type Action } from "../core/strategy";
 import { markUncertain, recordAnswer } from "../core/training";
 import { useStore } from "../state";
+import { cardsInDealOrder } from "../core/trainingRound";
+import { useCardDeal } from "../useCardDeal";
 
 interface Pending {
   attempted: Action;
@@ -45,6 +47,11 @@ const resultLabel = {
 export function PlayPage({ active }: { active: boolean }) {
   const { state, setState } = useStore();
   const game = state.game;
+  const animation = useCardDeal(
+    cardsInDealOrder(game),
+    `play-${game.round}`,
+    active,
+  );
   const [bet, setBet] = useState(game.baseBet);
   const [pending, setPending] = useState<Pending>();
   const [after, setAfter] = useState("");
@@ -60,7 +67,11 @@ export function PlayPage({ active }: { active: boolean }) {
     clock.current = {
       ms: 0,
       last: performance.now(),
-      running: active && game.phase === "player" && !document.hidden,
+      running:
+        active &&
+        game.phase === "player" &&
+        !animation.busy &&
+        !document.hidden,
     };
   }, [decisionId, game.phase]);
   useEffect(() => {
@@ -69,7 +80,11 @@ export function PlayPage({ active }: { active: boolean }) {
       if (clock.current.running) clock.current.ms += now - clock.current.last;
       clock.current.last = now;
       clock.current.running =
-        active && game.phase === "player" && !pending && !document.hidden;
+        active &&
+        game.phase === "player" &&
+        !pending &&
+        !animation.busy &&
+        !document.hidden;
     };
     tick();
     document.addEventListener("visibilitychange", tick);
@@ -77,7 +92,7 @@ export function PlayPage({ active }: { active: boolean }) {
       tick();
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [active, game.phase, pending]);
+  }, [active, game.phase, pending, animation.busy]);
   function updateGame(next: Game) {
     setState((s) => ({
       ...s,
@@ -95,7 +110,7 @@ export function PlayPage({ active }: { active: boolean }) {
     }));
   }
   function mark() {
-    if (game.phase !== "player" || marked || !hand) return;
+    if (game.phase !== "player" || marked || !hand || animation.busy) return;
     const advice = getAdvice(hand.cards, game.dealer[0], allowed);
     setState((s) => ({
       ...s,
@@ -156,7 +171,14 @@ export function PlayPage({ active }: { active: boolean }) {
     );
   }
   function act(action: Action) {
-    if (!hand || locked.current || pending || !allowed.includes(action)) return;
+    if (
+      !hand ||
+      locked.current ||
+      pending ||
+      animation.busy ||
+      !allowed.includes(action)
+    )
+      return;
     locked.current = true;
     const advice = getAdvice(hand.cards, game.dealer[0], allowed);
     const decision = {
@@ -183,7 +205,8 @@ export function PlayPage({ active }: { active: boolean }) {
     if (
       !["betting", "settled"].includes(game.phase) ||
       bet > game.bankroll ||
-      locked.current
+      locked.current ||
+      animation.busy
     )
       return;
     locked.current = true;
@@ -191,7 +214,7 @@ export function PlayPage({ active }: { active: boolean }) {
     updateGame(deal(game, bet));
   }
   useShortcuts(act, mark, start, active);
-  const finished = game.phase === "settled";
+  const finished = game.phase === "settled" && !animation.busy;
   const betting = game.phase === "betting" || finished;
   const playCount = state.freePlay.correct + state.freePlay.wrong;
   return (
@@ -223,9 +246,14 @@ export function PlayPage({ active }: { active: boolean }) {
               Runde {game.round || "–"} · {game.shoe.length} Karten
             </span>
           </div>
-          <div className="casino-table">
+          <div className="casino-table" aria-busy={animation.busy}>
             {game.dealer.length ? (
-              <HandCards cards={game.dealer} label="DEALER" total={finished} />
+              <HandCards
+                cards={game.dealer}
+                label="DEALER"
+                total={finished && state.settings.showHandTotals}
+                visible={animation.visible}
+              />
             ) : (
               <div className="empty-dealer">
                 <div className="card-outline">♠</div>
@@ -247,13 +275,17 @@ export function PlayPage({ active }: { active: boolean }) {
                   >
                     <HandCards
                       cards={h.cards}
+                      total={state.settings.showHandTotals}
+                      visible={animation.visible}
                       label={
                         game.hands.length > 1 ? `HAND ${i + 1}` : "DEINE HAND"
                       }
                     />
                     <div className="hand-result">
                       <span className="bet-pill">{euros(h.bet)}</span>
-                      {h.result ? (
+                      {animation.busy ? (
+                        <span>Karten werden ausgeteilt …</span>
+                      ) : h.result ? (
                         <span
                           className={
                             (h.profit ?? 0) > 0
@@ -292,6 +324,23 @@ export function PlayPage({ active }: { active: boolean }) {
             )}
           </div>
           <div className="decision-area play-controls">
+            <label className="play-total-switch">
+              <input
+                type="checkbox"
+                role="switch"
+                checked={state.settings.showHandTotals}
+                onChange={(e) =>
+                  setState((s) => ({
+                    ...s,
+                    settings: {
+                      ...s.settings,
+                      showHandTotals: e.target.checked,
+                    },
+                  }))
+                }
+              />
+              Handsumme anzeigen
+            </label>
             {game.phase === "insurance" && (
               <div className="insurance-offer">
                 <strong>Der Dealer zeigt ein Ass.</strong>
@@ -303,6 +352,7 @@ export function PlayPage({ active }: { active: boolean }) {
                 <div className="button-row">
                   <button
                     className="primary"
+                    disabled={animation.busy}
                     onClick={() => updateGame(chooseInsurance(game, "decline"))}
                   >
                     Ablehnen & weiterspielen
@@ -310,6 +360,7 @@ export function PlayPage({ active }: { active: boolean }) {
                   {isBlackjack(game.hands[0].cards) ? (
                     <button
                       className="secondary"
+                      disabled={animation.busy}
                       onClick={() => updateGame(chooseInsurance(game, "even"))}
                     >
                       Even Money
@@ -317,7 +368,9 @@ export function PlayPage({ active }: { active: boolean }) {
                   ) : (
                     <button
                       className="secondary"
-                      disabled={game.bankroll < game.baseBet / 2}
+                      disabled={
+                        animation.busy || game.bankroll < game.baseBet / 2
+                      }
                       onClick={() =>
                         updateGame(chooseInsurance(game, "insurance"))
                       }
@@ -377,7 +430,7 @@ export function PlayPage({ active }: { active: boolean }) {
                 <button
                   className="primary deal-button"
                   onClick={start}
-                  disabled={bet > game.bankroll}
+                  disabled={bet > game.bankroll || animation.busy}
                 >
                   {finished ? "Nächste Runde" : "Karten geben"}
                   <ArrowRight size={18} />
@@ -399,7 +452,11 @@ export function PlayPage({ active }: { active: boolean }) {
             )}
             {game.phase === "player" && (
               <div className="uncertainty-row">
-                <UnsureButton marked={marked} onClick={mark} />
+                <UnsureButton
+                  marked={marked}
+                  onClick={mark}
+                  disabled={animation.busy}
+                />
                 <span className="small muted">
                   {game.hands.length > 1
                     ? `Hand ${game.active + 1} von ${game.hands.length}`
@@ -410,8 +467,23 @@ export function PlayPage({ active }: { active: boolean }) {
             <ActionButtons
               allowed={allowed}
               onAction={act}
-              disabled={!!pending}
+              disabled={!!pending || animation.busy}
+              doubleReason={
+                hand && game.bankroll < hand.bet
+                  ? "Nicht genug verfügbares Übungsguthaben für den zusätzlichen Einsatz."
+                  : undefined
+              }
             />
+            {game.phase === "player" && !allowed.includes("D") && (
+              <details className="action-rule-help">
+                <summary>Warum ist Double gesperrt?</summary>
+                <p>
+                  {hand && game.bankroll < hand.bet
+                    ? "Dein verfügbares Übungsguthaben reicht nicht für den zusätzlichen Einsatz."
+                    : "Wiesbaden Rules: Double ist nur mit den ersten zwei Karten und Hard 9–11 erlaubt, auch nach Split. Nach Hit ist kein Double mehr möglich."}
+                </p>
+              </details>
+            )}
             {after && (
               <div className="feedback incorrect" role="status">
                 <p>{after}</p>
@@ -432,7 +504,15 @@ export function PlayPage({ active }: { active: boolean }) {
               <Coins size={19} />
             </div>
             <div className="session-score">
-              <strong>{euros(game.bankroll)}</strong>
+              <strong>
+                {euros(
+                  game.phase === "settled" && animation.busy
+                    ? game.startingBankroll -
+                        game.hands.reduce((sum, h) => sum + h.bet, 0) -
+                        game.insuranceBet
+                    : game.bankroll,
+                )}
+              </strong>
               <span>verfügbar · Startguthaben 1.000 €</span>
             </div>
             <div className="metrics compact">

@@ -21,7 +21,7 @@ const suitNames = {
 export function PlayingCard({ card }: { card: Card }) {
   return (
     <div
-      className={`playing-card ${["diamonds", "hearts"].includes(card.suit) ? "red" : ""}`}
+      className={`playing-card card-arrival ${["diamonds", "hearts"].includes(card.suit) ? "red" : ""}`}
       role="img"
       aria-label={`${card.rank} ${suitNames[card.suit]}`}
     >
@@ -43,17 +43,19 @@ export function HandCards({
   cards,
   label,
   total = true,
+  visible,
 }: {
   cards: Card[];
   label: string;
   total?: boolean;
+  visible?: ReadonlySet<string>;
 }) {
   const value = handValue(cards);
   return (
     <div className="hand-display">
       <div className="hand-label">
         {label}{" "}
-        {total && (
+        {total && cards.every((c) => !visible || visible.has(c.id)) && (
           <span className={`total-badge ${value.bust ? "bust" : ""}`}>
             {value.total}
             {value.soft ? " soft" : ""}
@@ -61,9 +63,17 @@ export function HandCards({
         )}
       </div>
       <div className={`cards cards-${Math.min(cards.length, 6)}`}>
-        {cards.map((card) => (
-          <PlayingCard key={card.id} card={card} />
-        ))}
+        {cards.map((card) =>
+          !visible || visible.has(card.id) ? (
+            <PlayingCard key={card.id} card={card} />
+          ) : (
+            <div
+              key={card.id}
+              className="playing-card card-slot"
+              aria-hidden="true"
+            />
+          ),
+        )}
       </div>
     </div>
   );
@@ -79,10 +89,12 @@ export function ActionButtons({
   allowed,
   onAction,
   disabled = false,
+  doubleReason,
 }: {
   allowed: readonly Action[];
   onAction: (action: Action) => void;
   disabled?: boolean;
+  doubleReason?: string;
 }) {
   return (
     <div className="action-grid">
@@ -95,6 +107,12 @@ export function ActionButtons({
             disabled={disabled || !allowed.includes(action)}
             onClick={() => onAction(action)}
             aria-label={`${ACTION_LABEL[action]} – ${subtitles[action]}`}
+            title={
+              action === "D" && !allowed.includes("D")
+                ? (doubleReason ??
+                  "Wiesbaden: Double nur mit zwei Karten und Hard 9–11.")
+                : undefined
+            }
           >
             <span className="action-top">
               <Icon size={18} />

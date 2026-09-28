@@ -10,6 +10,9 @@ export interface Settings {
   strategyWarnings: "before" | "after" | "disabled";
   autoAdvance: boolean;
   showTimer: boolean;
+  showHandTotals: boolean;
+  playFullHands: boolean;
+  focusEdges: boolean;
 }
 export interface PlayDecision {
   key: string;
@@ -70,6 +73,9 @@ export const freshState = (): AppState => ({
     strategyWarnings: "before",
     autoAdvance: false,
     showTimer: true,
+    showHandTotals: true,
+    playFullHands: false,
+    focusEdges: true,
   },
   training: emptyTraining(),
   game: newGame(),
@@ -198,6 +204,10 @@ const schema = z.object({
     strategyWarnings: z.enum(["before", "after", "disabled"]),
     autoAdvance: z.boolean(),
     showTimer: z.boolean(),
+    // Additive v1 migration: preserve existing progress and fill new preferences.
+    showHandTotals: z.boolean().default(true),
+    playFullHands: z.boolean().default(false),
+    focusEdges: z.boolean().default(true),
   }),
   training: z.object({
     decisions: z.record(key, decision),

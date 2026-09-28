@@ -126,6 +126,7 @@ export function nextCell(
   rng: RNG = Math.random,
   adaptive = true,
   now = Date.now(),
+  focusEdges = true,
 ): Cell | undefined {
   const candidates = pool.filter(
     (c) => pool.length === 1 || c.key !== previousKey,
@@ -147,12 +148,30 @@ export function nextCell(
         1 +
         Math.min(difficult.unsureCount, 4) * 0.75 +
         Number(difficult.pinned);
-    return weight;
+    return weight * (focusEdges ? edgeWeight(cell) : 1);
   });
   let target = rng() * weights.reduce((a, b) => a + b, 0);
   return (
     candidates.find((_, i) => (target -= weights[i]) < 0) ?? candidates.at(-1)
   );
+}
+// Scheduling priority only. Advice still comes exclusively from the matrix.
+export function edgeWeight(cell: Cell): number {
+  if (isTrap(cell)) return 14;
+  if (cell.row.type === "soft" && cell.row.value === "A7") return 7;
+  // Use the dealer column, not the first occurrence of an identical code.
+  const column = cell.dealer === "A" ? 9 : Number(cell.dealer) - 2;
+  const primary = cell.code[0];
+  if (
+    [column - 1, column + 1].some(
+      (i) => cell.row.cells[i] && cell.row.cells[i][0] !== primary,
+    )
+  )
+    return 7;
+  if (cell.row.type === "pair" && !["55", "1010"].includes(cell.row.value))
+    return 4;
+  if (new Set(cell.row.cells.map((code) => code[0])).size > 1) return 3;
+  return 0.35;
 }
 export function median(values: number[]) {
   if (!values.length) return 0;

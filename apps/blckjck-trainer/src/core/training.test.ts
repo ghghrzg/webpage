@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CELLS } from "./strategy";
 import {
   emptyTraining,
+  edgeWeight,
   isWeak,
   markUncertain,
   median,
@@ -66,6 +67,61 @@ describe("learning and persistence", () => {
     expect(
       nextCell(emptyTraining(), CELLS, CELLS[0].key, () => 0)?.key,
     ).not.toBe(CELLS[0].key);
+  });
+  it("prioritizes boundaries and ENHC traps without changing the advice or excluding basics", () => {
+    const pool = poolFor(emptyTraining(), "practice", "all");
+    let seed = 761;
+    const rng = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    let focused = 0,
+      balanced = 0;
+    for (let i = 0; i < 3000; i++) {
+      if (
+        edgeWeight(
+          nextCell(emptyTraining(), pool, undefined, rng, true, 0, true)!,
+        ) > 1
+      )
+        focused++;
+      if (
+        edgeWeight(
+          nextCell(emptyTraining(), pool, undefined, rng, true, 0, false)!,
+        ) > 1
+      )
+        balanced++;
+    }
+    expect(focused / 3000).toBeGreaterThan(0.88);
+    expect(focused / 3000).toBeLessThan(0.99);
+    expect(balanced / 3000).toBeLessThan(0.65);
+    const trap = pool.find((c) => c.key === "pair-88-vs-10")!;
+    const basic = pool.find((c) => c.key === "hard-19-vs-6")!;
+    expect(edgeWeight(trap)).toBeGreaterThan(edgeWeight(basic) * 10);
+    // A test is uniform and independent of the training preference.
+    expect(
+      nextCell(emptyTraining(), pool, undefined, () => 0.33, false, 0, true),
+    ).toBe(
+      nextCell(emptyTraining(), pool, undefined, () => 0.33, false, 0, false),
+    );
+  });
+  it("loads existing v1 saves with additive defaults and preserves explicit switches", () => {
+    const state = freshState();
+    state.training = recordAnswer(state.training, key, true, false, 1500);
+    const legacy = JSON.parse(JSON.stringify(state));
+    delete legacy.settings.showHandTotals;
+    delete legacy.settings.playFullHands;
+    delete legacy.settings.focusEdges;
+    const migrated = parseBackup(JSON.stringify(legacy));
+    expect(migrated.training).toEqual(state.training);
+    expect(migrated.settings).toMatchObject({
+      showHandTotals: true,
+      playFullHands: false,
+      focusEdges: true,
+    });
+    state.settings.showHandTotals = false;
+    state.settings.playFullHands = true;
+    state.settings.focusEdges = false;
+    expect(parseBackup(JSON.stringify(state)).settings).toEqual(state.settings);
   });
   it("computes medians and bounds retained samples", () => {
     expect(median([5, 1, 3, 2])).toBe(2.5);

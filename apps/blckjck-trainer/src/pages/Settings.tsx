@@ -53,6 +53,20 @@ export function Settings({
         <section>
           <h3>Dein Training</h3>
           <label className="setting-row">
+            <span>Handsumme anzeigen (Training & Spiel)</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={state.settings.showHandTotals}
+              onChange={(e) =>
+                setState((s) => ({
+                  ...s,
+                  settings: { ...s.settings, showHandTotals: e.target.checked },
+                }))
+              }
+            />
+          </label>
+          <label className="setting-row">
             <span>Erscheinungsbild</span>
             <select
               value={state.settings.theme}

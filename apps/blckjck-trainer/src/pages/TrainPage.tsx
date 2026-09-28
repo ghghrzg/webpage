@@ -40,6 +40,13 @@ import {
   type Mode,
 } from "../core/training";
 import { useStore } from "../state";
+import { playAction, type Game } from "../core/engine";
+import {
+  cardsInDealOrder,
+  createTrainingRound,
+  questionFromRound,
+} from "../core/trainingRound";
+import { useCardDeal } from "../useCardDeal";
 
 const MODES: { id: Mode; label: string }[] = [
   { id: "practice", label: "Üben" },
@@ -61,6 +68,7 @@ interface Answer {
   action: Action;
   expected: Action;
   ms: number;
+  explanation: string;
 }
 const LESSONS: Record<Group, { title: string; text: string }> = {
   all: {
@@ -90,13 +98,28 @@ export function TrainPage({ active }: { active: boolean }) {
   const [mode, setMode] = useState<Mode>("practice");
   const [group, setGroup] = useState<Group>("all");
   const [onlyKey, setOnlyKey] = useState<string>();
-  const [question, setQuestion] = useState<Question | undefined>(() => {
+  const [initial] = useState(() => {
     const cell = nextCell(
       state.training,
       poolFor(state.training, "practice", "all"),
+      undefined,
+      Math.random,
+      true,
+      Date.now(),
+      state.settings.focusEdges,
     );
-    return cell && questionFor(cell);
+    const sample = cell && questionFor(cell);
+    const round =
+      sample && state.settings.playFullHands
+        ? createTrainingRound(sample)
+        : undefined;
+    return { question: round ? questionFromRound(round) : sample, round };
   });
+  const [question, setQuestion] = useState<Question | undefined>(
+    initial.question,
+  );
+  const [round, setRound] = useState<Game | undefined>(initial.round);
+  const [dealNumber, setDealNumber] = useState(0);
   const [answer, setAnswer] = useState<Answer>();
   const [marked, setMarked] = useState(false);
   const [answers, setAnswers] = useState<Answer[]>([]);
@@ -106,7 +129,14 @@ export function TrainPage({ active }: { active: boolean }) {
   const [showResolved, setShowResolved] = useState(false);
   const locked = useRef(false);
   const clock = useRef({ elapsed: 0, last: performance.now(), running: false });
-  const canTime = active && !answer && !testDone && !!question;
+  const dealCards = round
+    ? cardsInDealOrder(round)
+    : question
+      ? [question.cards[0], question.dealer, ...question.cards.slice(1)]
+      : [];
+  const animation = useCardDeal(dealCards, `train-${dealNumber}`, active);
+  const canTime =
+    active && !answer && !testDone && !!question && !animation.busy;
   useEffect(() => {
     const tick = () => {
       const now = performance.now();
@@ -129,6 +159,8 @@ export function TrainPage({ active }: { active: boolean }) {
     nextMode = mode,
     nextGroup = group,
     single: string | null = onlyKey ?? null,
+    fullHands = state.settings.playFullHands,
+    focusEdges = state.settings.focusEdges,
   ) {
     const cell = nextCell(
       state.training,
@@ -136,17 +168,37 @@ export function TrainPage({ active }: { active: boolean }) {
       question?.cell.key,
       Math.random,
       nextMode !== "test",
+      Date.now(),
+      focusEdges,
     );
-    setQuestion(cell ? questionFor(cell) : undefined);
+    const sample = cell ? questionFor(cell) : undefined;
+    const nextRound =
+      sample && fullHands && nextMode !== "test"
+        ? createTrainingRound(sample)
+        : undefined;
+    setRound(nextRound);
+    setQuestion(nextRound ? questionFromRound(nextRound) : sample);
+    setDealNumber((n) => n + 1);
     setAnswer(undefined);
     setMarked(false);
     locked.current = false;
     clock.current = {
       elapsed: 0,
       last: performance.now(),
-      running: active && !document.hidden,
+      running: false,
     };
     setElapsed(0);
+  }
+  function continueHand() {
+    if (!answer || testDone || animation.busy) return;
+    if (round?.phase === "player") {
+      setQuestion(questionFromRound(round));
+      setAnswer(undefined);
+      setMarked(false);
+      locked.current = false;
+      clock.current = { elapsed: 0, last: performance.now(), running: false };
+      setElapsed(0);
+    } else pick();
   }
   function changeMode(next: Mode, nextGroup: Group = group) {
     setMode(next);
@@ -158,7 +210,7 @@ export function TrainPage({ active }: { active: boolean }) {
     pick(next, next === "test" ? "all" : nextGroup, null);
   }
   function mark() {
-    if (!question || marked || answer || testDone) return;
+    if (!question || marked || answer || testDone || animation.busy) return;
     setMarked(true);
     setState((s) => ({
       ...s,
@@ -170,6 +222,7 @@ export function TrainPage({ active }: { active: boolean }) {
       !question ||
       locked.current ||
       testDone ||
+      animation.busy ||
       !question.allowed.includes(action)
     )
       return;
@@ -185,10 +238,12 @@ export function TrainPage({ active }: { active: boolean }) {
       action,
       expected,
       ms,
+      explanation: explain(question.cell, question.allowed),
     };
     const next = [...answers, result];
     setAnswers(next);
     setAnswer(result);
+    if (round) setRound(playAction(round, action));
     setState((s) => ({
       ...s,
       lastUsedAt: Date.now(),
@@ -217,17 +272,22 @@ export function TrainPage({ active }: { active: boolean }) {
       !answer ||
       testDone ||
       !active ||
+      animation.busy ||
       (mode !== "test" && !state.settings.autoAdvance)
     )
       return;
-    const timer = setTimeout(() => pick(), mode === "test" ? 350 : 1400);
+    // Allow time to read the round result before starting a new exercise.
+    const timer = setTimeout(
+      continueHand,
+      mode === "test" ? 350 : round?.phase === "settled" ? 2400 : 1400,
+    );
     return () => clearTimeout(timer);
-  }, [answer, testDone, active, state.settings.autoAdvance]);
+  }, [answer, testDone, active, state.settings.autoAdvance, animation.busy]);
   useShortcuts(
     respond,
     mark,
     () => {
-      if (answer && !testDone) pick();
+      continueHand();
     },
     active,
   );
@@ -258,7 +318,7 @@ export function TrainPage({ active }: { active: boolean }) {
   }
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading training-intro">
         <div>
           <span className="eyebrow">DEIN STRATEGIE-LABOR</span>
           <h1>
@@ -292,6 +352,57 @@ export function TrainPage({ active }: { active: boolean }) {
             )}
           </button>
         ))}
+      </div>
+      <div className="training-switches" aria-label="Trainingsoptionen">
+        <label>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={state.settings.focusEdges}
+            disabled={mode === "test"}
+            onChange={(e) => {
+              const value = e.target.checked;
+              setState((s) => ({
+                ...s,
+                settings: { ...s.settings, focusEdges: value },
+              }));
+              if (!round || round.phase === "settled")
+                pick(mode, group, onlyKey, state.settings.playFullHands, value);
+            }}
+          />
+          Grenzfälle priorisieren
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={state.settings.playFullHands && mode !== "test"}
+            disabled={mode === "test"}
+            onChange={(e) => {
+              const value = e.target.checked;
+              setState((s) => ({
+                ...s,
+                settings: { ...s.settings, playFullHands: value },
+              }));
+              pick(mode, group, onlyKey, value);
+            }}
+          />
+          Hand zu Ende spielen
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={state.settings.showHandTotals}
+            onChange={(e) =>
+              setState((s) => ({
+                ...s,
+                settings: { ...s.settings, showHandTotals: e.target.checked },
+              }))
+            }
+          />
+          Handsumme anzeigen
+        </label>
       </div>
       <div className="workspace">
         <section className="main-panel training-panel">
@@ -378,23 +489,72 @@ export function TrainPage({ active }: { active: boolean }) {
             </div>
           ) : question ? (
             <>
-              <div className="training-table">
+              <div
+                className={`training-table ${round && round.hands.length > 1 ? "training-split-table" : ""}`}
+                aria-busy={animation.busy}
+              >
                 <HandCards
-                  cards={[question.dealer]}
+                  cards={round?.dealer ?? [question.dealer]}
                   label="DEALER"
-                  total={false}
+                  total={
+                    state.settings.showHandTotals &&
+                    round?.phase === "settled" &&
+                    !animation.busy
+                  }
+                  visible={animation.visible}
                 />
                 <div className="table-divider">
                   <span />
                   vs
                   <span />
                 </div>
-                <HandCards cards={question.cards} label="DEINE HAND" />
+                {round ? (
+                  <div
+                    className={`trainer-hands ${round.hands.length > 1 ? "multiple" : ""}`}
+                  >
+                    {round.hands.map((hand, i) => (
+                      <div
+                        key={hand.cards[0].id}
+                        className={`trainer-hand ${round.phase === "player" && round.active === i ? "current" : ""}`}
+                      >
+                        <HandCards
+                          cards={hand.cards}
+                          label={
+                            round.hands.length > 1
+                              ? `HAND ${i + 1}`
+                              : "DEINE HAND"
+                          }
+                          total={state.settings.showHandTotals}
+                          visible={animation.visible}
+                        />
+                        {round.phase === "settled" && !animation.busy && (
+                          <span
+                            className={`training-hand-result ${(hand.profit ?? 0) > 0 ? "text-good" : (hand.profit ?? 0) < 0 ? "text-warn" : ""}`}
+                          >
+                            {hand.result === "win" ||
+                            hand.result === "blackjack"
+                              ? "Gewonnen"
+                              : hand.result === "loss"
+                                ? "Verloren"
+                                : "Unentschieden"}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <HandCards
+                    cards={question.cards}
+                    label="DEINE HAND"
+                    total={state.settings.showHandTotals}
+                    visible={animation.visible}
+                  />
+                )}
                 <div className="uncertainty-row">
                   <UnsureButton
                     marked={marked}
                     onClick={mark}
-                    disabled={!!answer}
+                    disabled={!!answer || animation.busy}
                   />
                   {state.settings.showTimer && (
                     <span className="decision-timer">
@@ -402,13 +562,39 @@ export function TrainPage({ active }: { active: boolean }) {
                     </span>
                   )}
                 </div>
+                {answer && mode !== "test" && (
+                  <span
+                    key={answers.length}
+                    className={`decision-glow ${answer.correct ? "correct" : "incorrect"}`}
+                    aria-hidden="true"
+                  />
+                )}
               </div>
               <div className="decision-area">
                 <ActionButtons
                   allowed={question.allowed}
                   onAction={respond}
-                  disabled={!!answer}
+                  disabled={!!answer || animation.busy}
                 />
+                {!question.allowed.includes("D") && !answer && (
+                  <details className="action-rule-help">
+                    <summary>Warum ist Double gesperrt?</summary>
+                    <p>
+                      Wiesbaden Rules: nur mit den ersten zwei Karten und Hard
+                      9, 10 oder 11. Nach Hit ist Double nicht mehr möglich;
+                      nach Split gelten dieselben Grenzen.
+                    </p>
+                  </details>
+                )}
+                {round?.phase === "settled" && !animation.busy && (
+                  <div className="training-round-result" role="status">
+                    <strong>Trainingsrunde beendet.</strong>
+                    <span>
+                      Das Rundenergebnis ändert die Bewertung deiner
+                      Entscheidungen nicht.
+                    </span>
+                  </div>
+                )}
                 <div
                   className={`feedback ${answer && mode !== "test" ? (answer.correct ? "correct" : "incorrect") : ""}`}
                   aria-live="polite"
@@ -417,7 +603,11 @@ export function TrainPage({ active }: { active: boolean }) {
                     mode === "test" ? (
                       <>
                         <span>Entscheidung gespeichert.</span>
-                        <button className="next-button" onClick={() => pick()}>
+                        <button
+                          className="next-button"
+                          onClick={continueHand}
+                          disabled={animation.busy}
+                        >
                           Weiter <ArrowRight size={17} />
                         </button>
                       </>
@@ -429,22 +619,32 @@ export function TrainPage({ active }: { active: boolean }) {
                               ? "Richtig entschieden."
                               : `Die Strategie empfiehlt ${ACTION_LABEL[answer.expected]}.`}
                           </strong>
-                          <p>{explain(question.cell, question.allowed)}</p>
+                          <p>{answer.explanation}</p>
                         </div>
                         <button
                           className="next-button"
-                          onClick={() => pick()}
-                          aria-label="Nächste Hand"
+                          onClick={continueHand}
+                          disabled={animation.busy}
+                          aria-label={
+                            round?.phase === "player"
+                              ? "Hand weiterspielen"
+                              : "Nächste Hand"
+                          }
                         >
-                          Weiter <ArrowRight size={18} />
+                          {round?.phase === "player"
+                            ? "Weiterspielen"
+                            : "Weiter"}{" "}
+                          <ArrowRight size={18} />
                         </button>
                       </>
                     )
                   ) : (
                     <span>
-                      {marked
-                        ? "Gemerkt. Entscheide dich trotzdem selbst."
-                        : "Was ist hier der beste Spielzug?"}
+                      {animation.busy
+                        ? "Karten werden ausgeteilt …"
+                        : marked
+                          ? "Gemerkt. Entscheide dich trotzdem selbst."
+                          : "Was ist hier der beste Spielzug?"}
                     </span>
                   )}
                 </div>
@@ -472,7 +672,11 @@ export function TrainPage({ active }: { active: boolean }) {
           <div className="panel-footer">
             <span>
               <span className="status-dot" />{" "}
-              {mode === "test" ? "Zufällige Auswahl" : "Adaptive Wiederholung"}
+              {mode === "test"
+                ? "Zufällige Auswahl"
+                : state.settings.focusEdges
+                  ? "Grenzfälle + deine Schwächen"
+                  : "Adaptive Wiederholung"}
             </span>
             <span>6D · ENHC · S17</span>
           </div>
@@ -496,7 +700,7 @@ export function TrainPage({ active }: { active: boolean }) {
               </span>
             </div>
             <div className="metrics compact">
-              <Metric value={answers.length} label="Hände" />
+              <Metric value={answers.length} label="Entscheidungen" />
               <Metric
                 value={
                   mode === "test" && !testDone

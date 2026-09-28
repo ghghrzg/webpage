@@ -7,6 +7,7 @@ import {
 } from "../src/core/storage";
 import { deal, newGame, type Game } from "../src/core/engine";
 import type { Rank } from "../src/core/cards";
+import { markUncertain } from "../src/core/training";
 
 function fixture(ranks: Rank[]): Game {
   const game = newGame(() => 0.3);
@@ -257,6 +258,147 @@ test("export, validated import, and cancelled reset retain progress", async ({
     .getByRole("button", { name: "Spielstand übernehmen", exact: true })
     .click();
   expect((await saved(page)).game.bankroll).toBe(1230);
+});
+test("full training hand evaluates each move, hides sums, and leaves the free-play bank alone", async ({
+  page,
+}, info) => {
+  const state = freshState();
+  state.settings.playFullHands = true;
+  state.settings.showHandTotals = false;
+  state.training = markUncertain(state.training, "hard-5-vs-6");
+  await seed(page, state);
+  await page.goto("./");
+  await page.getByRole("tab", { name: /^Unsicher/ }).click();
+  await expect(
+    page.getByRole("switch", { name: "Hand zu Ende spielen", exact: true }),
+  ).toBeChecked();
+  await expect(page.locator(".training-table .total-badge")).toHaveCount(0);
+  await page.getByRole("button", { name: "Hit – Karte ziehen" }).click();
+  await expect(page.locator(".trainer-hand .playing-card")).toHaveCount(3);
+  await expect(
+    page.getByRole("button", { name: "Hand weiterspielen" }),
+  ).toBeVisible();
+  expect((await saved(page)).training.decisions["hard-5-vs-6"].seen).toBe(1);
+  await page.getByRole("button", { name: "Hand weiterspielen" }).click();
+  await expect(
+    page.getByRole("button", { name: "Double – Verdoppeln" }),
+  ).toBeDisabled();
+  await page.getByText("Warum ist Double gesperrt?").click();
+  await expect(
+    page.getByText(/Nach Hit ist Double nicht mehr möglich/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await expect(page.getByText("Trainingsrunde beendet.")).toBeVisible();
+  await expect(page.locator(".training-table .total-badge")).toHaveCount(0);
+  const result = await saved(page);
+  expect(
+    Object.values(result.training.decisions).reduce((n, s) => n + s.seen, 0),
+  ).toBe(2);
+  expect(result.game.bankroll).toBe(1000);
+  expect(result.freePlay.rounds).toBe(0);
+  await page.screenshot({
+    path: `test-results/full-hand-${info.project.name}.png`,
+    fullPage: true,
+  });
+  await page
+    .getByRole("switch", { name: "Handsumme anzeigen", exact: true })
+    .check();
+  await expect(page.locator(".training-table .total-badge")).toHaveCount(2);
+  await page.reload();
+  await expect(
+    page.getByRole("switch", { name: "Hand zu Ende spielen", exact: true }),
+  ).toBeChecked();
+});
+test("trainer splits play out both hands and casino test stays in single-decision mode", async ({
+  page,
+}) => {
+  const state = freshState();
+  state.settings.playFullHands = true;
+  state.training = markUncertain(state.training, "pair-88-vs-6");
+  await seed(page, state);
+  await page.goto("./");
+  await page.getByRole("tab", { name: /^Unsicher/ }).click();
+  await page.getByRole("button", { name: "Split – Teilen" }).click();
+  await expect(page.locator(".trainer-hand")).toHaveCount(2);
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Hand weiterspielen" }).click();
+    await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  }
+  await expect(page.getByText("Trainingsrunde beendet.")).toBeVisible();
+  expect((await saved(page)).sessions[0].total).toBe(3);
+  await page.getByRole("tab", { name: "Casino-Test" }).click();
+  await expect(
+    page.getByRole("switch", { name: "Hand zu Ende spielen", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("switch", { name: "Hand zu Ende spielen", exact: true }),
+  ).not.toBeChecked();
+  await page.getByRole("tab", { name: "Üben", exact: true }).click();
+  await expect(
+    page.getByRole("switch", { name: "Hand zu Ende spielen", exact: true }),
+  ).toBeChecked();
+});
+test("sums switch also hides dealer and player totals in free play and survives reload", async ({
+  page,
+}) => {
+  const state = freshState();
+  state.settings.showHandTotals = false;
+  state.game = fixture(["10", "6", "8", "10", "2"]);
+  await seed(page, state);
+  await page.goto("./#play");
+  await expect(page.locator(".casino-table .total-badge")).toHaveCount(0);
+  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await expect(page.getByText("RUNDE ABGESCHLOSSEN")).toBeVisible();
+  await expect(page.locator(".casino-table .total-badge")).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.getByRole("switch", { name: "Handsumme anzeigen", exact: true }),
+  ).not.toBeChecked();
+  await page
+    .getByRole("switch", { name: "Handsumme anzeigen", exact: true })
+    .check();
+  await expect(page.locator(".casino-table .total-badge")).toHaveCount(2);
+});
+test("cards deal sequentially, inputs wait for the flight, and hit adds one animated card", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.clock.install({ time: new Date("2026-09-28T12:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-09-28T12:00:01Z"));
+  const state = freshState();
+  state.game = fixture(["8", "K", "8", "2", "7"]);
+  await seed(page, state);
+  await page.goto("./#play");
+  const table = page.locator(".casino-table");
+  await expect(table).toHaveAttribute("aria-busy", "true");
+  await expect(
+    page.getByRole("button", { name: "Hit – Karte ziehen" }),
+  ).toBeDisabled();
+  await page.clock.runFor(20);
+  await expect(table.getByRole("img")).toHaveCount(1);
+  await page.clock.runFor(150);
+  await expect(table.getByRole("img")).toHaveCount(2);
+  await page.clock.runFor(150);
+  await expect(table.getByRole("img")).toHaveCount(3);
+  await expect(
+    page.getByRole("button", { name: "Hit – Karte ziehen" }),
+  ).toBeDisabled();
+  await page.clock.runFor(300);
+  await expect(
+    page.getByRole("button", { name: "Hit – Karte ziehen" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Hit – Karte ziehen" }).click();
+  await expect(table).toHaveAttribute("aria-busy", "true");
+  await page.clock.runFor(20);
+  await expect(table.getByRole("img")).toHaveCount(4);
+  expect(
+    await table
+      .getByRole("img")
+      .last()
+      .evaluate((el) => getComputedStyle(el).animationName),
+  ).toBe("card-deal");
+  await page.clock.runFor(300);
+  await expect(table).toHaveAttribute("aria-busy", "false");
 });
 test("casino test hides all correctness feedback until the 100th decision", async ({
   page,

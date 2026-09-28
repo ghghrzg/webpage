@@ -8,6 +8,8 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:4173/contents/blckjck_trainer/",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    // Behaviour tests use the accessible instant path; dedicated tests opt into motion.
+    reducedMotion: "reduce",
     channel:
       process.env.PLAYWRIGHT_CHANNEL ??
       (process.platform === "win32" && !process.env.CI ? "msedge" : undefined),
