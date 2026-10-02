@@ -14,6 +14,7 @@ export interface Settings {
   showHandTotals: boolean;
   playFullHands: boolean;
   focusEdges: boolean;
+  rangeCards: boolean;
 }
 export interface PlayDecision {
   key: string;
@@ -78,6 +79,7 @@ export const freshState = (): AppState => ({
     showHandTotals: true,
     playFullHands: false,
     focusEdges: true,
+    rangeCards: false,
   },
   training: emptyTraining(),
   strategyRanges: {},
@@ -211,6 +213,7 @@ const schema = z.object({
     showHandTotals: z.boolean().default(true),
     playFullHands: z.boolean().default(false),
     focusEdges: z.boolean().default(true),
+    rangeCards: z.boolean().default(false),
   }),
   training: z.object({
     decisions: z.record(key, decision),

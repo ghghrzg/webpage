@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { STRATEGY, type Action } from "./strategy";
+import { ACTIONS, DEALERS, getAdvice } from "./strategy";
+import { handValue, sampleCard } from "./cards";
 import { freshState, parseBackup } from "./storage";
 import {
   STRATEGY_RANGES,
@@ -7,11 +9,49 @@ import {
   editRange,
   emptyRangeDraft,
   nextRange,
+  rangeHand,
   recordRangeAnswer,
   scoreRange,
 } from "./strategyRanges";
 
 describe("strategy ranges", () => {
+  it("generates two unambiguous cards per category with matching advice", () => {
+    let seed = 791;
+    const rng = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const hardNineHands = new Set<string>();
+    for (const category of STRATEGY_RANGES) {
+      for (let i = 0; i < 40; i++) {
+        const cards = rangeHand(category, rng);
+        expect(cards).toHaveLength(2);
+        expect(cards[0].suit).not.toBe(cards[1].suit);
+        expect(handValue(cards).bust).toBe(false);
+        for (const [index, dealer] of DEALERS.entries()) {
+          const advice = getAdvice(cards, sampleCard(dealer, 9, rng), ACTIONS);
+          expect(advice.row.type).toBe(category.type);
+          expect(category.values).toContain(advice.row.value);
+          expect(advice.action).toBe(category.answers[index]);
+        }
+        if (category.id === "pair-10")
+          expect(cards.map((card) => card.rank)).toEqual(["10", "10"]);
+        if (category.id === "hard-9")
+          hardNineHands.add(
+            cards
+              .map((card) => card.rank)
+              .sort()
+              .join(","),
+          );
+      }
+    }
+    expect(hardNineHands.size).toBe(3);
+    const legacy = JSON.parse(JSON.stringify(freshState()));
+    delete legacy.settings.rangeCards;
+    expect(parseBackup(JSON.stringify(legacy)).settings.rangeCards).toBe(false);
+    legacy.settings.rangeCards = true;
+    expect(parseBackup(JSON.stringify(legacy)).settings.rangeCards).toBe(true);
+  });
   it("shrinks a swipe range and restores the answers from before the gesture", () => {
     for (const marked of [false, true]) {
       const original = marked

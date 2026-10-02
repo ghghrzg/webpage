@@ -136,10 +136,12 @@ test("ranges support taps, fast swipes, grouped undo, correction and persisted c
   );
   await expect(page.locator(".ranges-actions")).toBeHidden();
   for (const card of await cards(page).all()) await expect(card).toBeDisabled();
-  const resultBox = (await page.locator(".ranges-result").boundingBox())!;
+  const resultBox = (await page.locator(".ranges-dock-result").boundingBox())!;
   const resultDock = (await page.locator(".ranges-dock").boundingBox())!;
   expect(resultBox.y).toBeGreaterThanOrEqual(0);
-  expect(resultBox.y + resultBox.height).toBeLessThanOrEqual(resultDock.y);
+  expect(resultBox.y + resultBox.height).toBeLessThanOrEqual(
+    resultDock.y + resultDock.height,
+  );
   await page.screenshot({
     path: `test-results/ranges-feedback-${info.project.name}.png`,
     fullPage: true,
@@ -255,4 +257,86 @@ test("keyboard painting and undo stay scoped to the active ranges tab", async ({
   ).toHaveAttribute("aria-pressed", "true");
   await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Split");
   expect((await saved(page)).strategyRanges).toEqual({});
+});
+
+test("overview includes every solution and stats; card mode reveals totals without layout shifts", async ({
+  page,
+}, info) => {
+  if (info.project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto("./#ranges");
+  const category = await page.locator(".ranges-category").innerText();
+  await page.getByRole("button", { name: "Übersicht", exact: true }).click();
+  await expect(page.locator(".ranges-overview-card")).toHaveCount(17);
+  await expect(page.locator(".ranges-overview-summary")).toContainText("0/17");
+  for (const range of STRATEGY_RANGES) {
+    await expect(
+      page.getByRole("heading", { name: range.label, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByLabel(`Lösung für ${range.label}`, { exact: true }),
+    ).not.toBeEmpty();
+  }
+  await page.getByRole("button", { name: "Zur Übung", exact: true }).click();
+  const gridBefore = (await page.locator(".ranges-grid").boundingBox())!;
+  await page.getByRole("switch", { name: "Karten anzeigen" }).check();
+  await expect(page.locator(".ranges-hand .playing-card")).toHaveCount(2);
+  await expect(page.locator(".ranges-category")).toHaveCount(0);
+  await expect(page.locator(".ranges-reveal")).toHaveText(
+    "Range und Summe erscheinen nach Prüfen.",
+  );
+  expect((await page.locator(".ranges-grid").boundingBox())!.y).toBe(
+    gridBefore.y,
+  );
+  const dealt = await page
+    .locator(".ranges-hand .playing-card")
+    .evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("aria-label")),
+    );
+  await page.getByRole("button", { name: "Alles", exact: true }).click();
+  const before = await Promise.all([
+    page.locator(".ranges-grid").boundingBox(),
+    page.locator(".ranges-dock").boundingBox(),
+  ]);
+  await page.getByRole("button", { name: "Prüfen", exact: true }).click();
+  await expect(page.locator(".ranges-reveal")).toContainText(
+    `${category} · Summe`,
+  );
+  expect(
+    await page
+      .locator(".ranges-hand .playing-card")
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("aria-label")),
+      ),
+  ).toEqual(dealt);
+  const after = await Promise.all([
+    page.locator(".ranges-grid").boundingBox(),
+    page.locator(".ranges-dock").boundingBox(),
+  ]);
+  expect(after).toEqual(before);
+  await page.screenshot({
+    path: `test-results/ranges-cards-${info.project.name}.png`,
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Übersicht", exact: true }).click();
+  await expect(page.locator(".ranges-overview-summary")).toContainText("1/17");
+  const entry = page
+    .locator(".ranges-overview-card")
+    .filter({
+      has: page.getByRole("heading", { name: category, exact: true }),
+    });
+  await expect(entry).toContainText("10 Feldern");
+  await page.screenshot({
+    path: `test-results/ranges-overview-${info.project.name}.png`,
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Zur Übung", exact: true }).click();
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await expect(page.locator(".ranges-reveal")).toHaveText(
+    "Range und Summe erscheinen nach Prüfen.",
+  );
+  await page.reload();
+  await expect(
+    page.getByRole("switch", { name: "Karten anzeigen" }),
+  ).toBeChecked();
 });

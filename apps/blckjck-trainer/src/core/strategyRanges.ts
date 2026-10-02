@@ -1,4 +1,4 @@
-import type { RNG } from "./cards";
+import { SUITS, type Card, type Rank, type RNG } from "./cards";
 import {
   ACTION_LABEL,
   ACTIONS,
@@ -77,6 +77,43 @@ export interface RangeStats {
 }
 export type RangeTraining = Record<string, RangeStats>;
 export type RangeAnswers = readonly (Action | null)[];
+
+export function rangeHand(
+  category: StrategyRange,
+  rng: RNG = Math.random,
+): Card[] {
+  const combinations: [Rank, Rank][] = [];
+  if (category.type === "hard") {
+    // Equal values belong to the pair categories; aces would make a soft hand.
+    for (let first = 2; first <= 10; first++)
+      for (let second = first + 1; second <= 10; second++)
+        if (category.values.includes(String(first + second)))
+          combinations.push([String(first) as Rank, String(second) as Rank]);
+  } else {
+    for (const value of category.values) {
+      if (category.type === "soft")
+        combinations.push(["A", value.slice(1) as Rank]);
+      else {
+        const rank = (
+          value === "AA" ? "A" : value === "1010" ? "10" : value[0]
+        ) as Rank;
+        combinations.push([rank, rank]);
+      }
+    }
+  }
+  if (!combinations.length)
+    throw new Error(`Kein Kartenpaar für ${category.id}`);
+  const ranks = [...combinations[Math.floor(rng() * combinations.length)]];
+  if (rng() < 0.5) ranks.reverse();
+  const firstSuit = Math.floor(rng() * SUITS.length);
+  const secondSuit = (firstSuit + 1 + Math.floor(rng() * 3)) % SUITS.length;
+  return ranks.map((rank, index) => ({
+    id: `range-card-${index}`,
+    deck: 0,
+    rank,
+    suit: SUITS[index === 0 ? firstSuit : secondSuit],
+  }));
+}
 
 export function scoreRange(category: StrategyRange, answers: RangeAnswers) {
   if (answers.length !== DEALERS.length || answers.some((answer) => !answer))
