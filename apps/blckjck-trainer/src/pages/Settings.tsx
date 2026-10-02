@@ -30,6 +30,7 @@ export function Settings({
       setState((s) => ({
         ...s,
         training: emptyTraining(),
+        strategyRanges: {},
         sessions: [],
         challenge: [false, false, false],
         playUnsure: null,

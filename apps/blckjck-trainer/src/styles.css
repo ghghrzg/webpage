@@ -204,7 +204,7 @@ small,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 16px;
+  padding: 0 12px;
   font-size: 13px;
   position: relative;
   color: var(--muted);
@@ -2017,7 +2017,7 @@ input[type="checkbox"] {
   }
   .mobile-nav {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     position: fixed;
     bottom: 0;
     left: 0;
@@ -2702,6 +2702,299 @@ input[type="checkbox"] {
   .training-table .cards-3 {
     --card-w: 60px;
     --card-h: 84px;
+  }
+}
+.ranges-page {
+  max-width: 720px;
+  margin: 0 auto;
+  --range-hit: #a6cbea;
+  --range-stand: var(--green);
+  --range-double: var(--gold);
+  --range-split: #ccb4e9;
+}
+:root[data-theme="light"] .ranges-page {
+  --range-hit: #285b84;
+  --range-split: #715198;
+}
+.ranges-heading .ranges-shuffle {
+  color: var(--gold);
+}
+.ranges-panel {
+  padding: 18px 14px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.ranges-task-meta,
+.ranges-grid-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.ranges-type {
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.ranges-category {
+  margin: 16px 0 8px;
+  font-size: clamp(22px, 5vw, 38px);
+  line-height: 1.2;
+  text-align: center;
+  letter-spacing: -0.7px;
+  outline: none;
+  scroll-margin-top: 16px;
+}
+.ranges-instructions {
+  max-width: 340px;
+  margin: 0 auto 20px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.ranges-grid-label {
+  margin-bottom: 10px;
+}
+.ranges-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.range-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 100px;
+  padding: 10px 2px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  touch-action: none;
+}
+.range-dealer {
+  font-size: 25px;
+  font-weight: 650;
+  color: var(--text);
+}
+.range-answer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 28px;
+  min-height: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 5px;
+  color: var(--range-action, var(--muted));
+}
+.range-mark-H {
+  --range-action: var(--range-hit);
+}
+.range-mark-S {
+  --range-action: var(--range-stand);
+}
+.range-mark-D {
+  --range-action: var(--range-double);
+}
+.range-mark-P {
+  --range-action: var(--range-split);
+}
+.range-card:enabled:hover {
+  border-color: var(--range-action, var(--muted));
+}
+.range-card.range-swipe-selected {
+  background: color-mix(in srgb, var(--range-action) 18%, var(--bg));
+  border-color: var(--range-action);
+  box-shadow: inset 0 0 0 1px var(--range-action);
+}
+.range-card:disabled {
+  opacity: 1;
+}
+.range-card.range-correct {
+  border-color: var(--green);
+  background: var(--green-dark);
+}
+.range-card.range-wrong {
+  border-color: var(--warn);
+}
+.range-correct .range-answer {
+  color: var(--green);
+}
+.range-wrong .range-answer {
+  color: var(--warn);
+}
+.range-struck {
+  text-decoration: line-through;
+}
+.range-correction {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 700;
+}
+.ranges-edit-hint {
+  color: var(--muted);
+  text-align: center;
+  font-size: 11px;
+  margin: 14px 0 0;
+  line-height: 1.5;
+}
+.ranges-result {
+  text-align: center;
+  padding-top: 18px;
+  scroll-margin-bottom: calc(154px + env(safe-area-inset-bottom));
+}
+.ranges-result > strong {
+  display: block;
+  font-size: 23px;
+}
+.ranges-result-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 12px;
+}
+.ranges-rule {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text);
+}
+.ranges-rule > span {
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: var(--panel-raised);
+  font-size: 12px;
+}
+.ranges-dock {
+  position: sticky;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  z-index: 10;
+  padding: 12px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 -4px 24px #0002;
+}
+.ranges-actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.ranges-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 58px;
+  min-width: 0;
+  padding: 6px 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11px;
+}
+.ranges-action > strong {
+  font-size: 19px;
+  line-height: 20px;
+  color: var(--range-action);
+}
+.ranges-action[aria-pressed="true"] {
+  border-color: var(--range-action);
+  box-shadow: inset 0 0 0 1px var(--range-action);
+  background: var(--panel-raised);
+  color: var(--text);
+}
+.ranges-action:disabled[aria-pressed="true"] {
+  opacity: 0.45;
+}
+.ranges-submit {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ranges-submit > button {
+  min-height: 48px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.ranges-submit > .primary {
+  flex: 1;
+}
+.ranges-dock-checked .ranges-submit {
+  margin-top: 0;
+}
+.ranges-learning-note {
+  padding: 16px 8px 0;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+.ranges-learning-note p {
+  margin-bottom: 7px;
+}
+.ranges-learning-note svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+@media (min-width: 521px) {
+  .ranges-panel {
+    padding: 24px;
+  }
+  .ranges-grid {
+    gap: 12px;
+  }
+  .range-card {
+    min-height: 114px;
+  }
+  .ranges-action {
+    font-size: 12px;
+  }
+}
+@media (min-width: 801px) {
+  .ranges-dock {
+    bottom: 12px;
+  }
+  .ranges-result {
+    scroll-margin-bottom: 100px;
+  }
+}
+@media (max-width: 520px) and (max-height: 740px) {
+  .ranges-panel {
+    padding: 12px;
+  }
+  .ranges-type {
+    padding: 3px 7px;
+  }
+  .ranges-category {
+    margin: 10px 0 6px;
+  }
+  .ranges-instructions {
+    margin-bottom: 12px;
+  }
+  .range-card {
+    min-height: 88px;
+    padding: 8px 2px;
+  }
+  .ranges-edit-hint {
+    margin-top: 10px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

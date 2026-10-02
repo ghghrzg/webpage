@@ -3,6 +3,7 @@ import { RANKS, SUITS, handValue } from "./cards";
 import { CELL_BY_KEY, type Action } from "./strategy";
 import { newGame, type Game } from "./engine";
 import { emptyTraining, type Training } from "./training";
+import { STRATEGY_RANGES, type RangeTraining } from "./strategyRanges";
 
 export const STORAGE_KEY = "european-blackjack-trainer:v1";
 export interface Settings {
@@ -47,6 +48,7 @@ export interface AppState {
   lastUsedAt: number;
   settings: Settings;
   training: Training;
+  strategyRanges: RangeTraining;
   game: Game;
   freePlay: FreeStats;
   sessions: Session[];
@@ -78,6 +80,7 @@ export const freshState = (): AppState => ({
     focusEdges: true,
   },
   training: emptyTraining(),
+  strategyRanges: {},
   game: newGame(),
   freePlay: emptyFreeStats(),
   sessions: [],
@@ -213,6 +216,28 @@ const schema = z.object({
     decisions: z.record(key, decision),
     difficult: z.record(key, difficult),
   }),
+  // Additive v1 migration: older saves have no range attempts yet.
+  strategyRanges: z
+    .record(
+      z
+        .string()
+        .refine((id) => STRATEGY_RANGES.some((range) => range.id === id)),
+      z
+        .object({
+          attempts: count,
+          perfect: count,
+          mistakes: count,
+          lastSeen: count,
+        })
+        .refine(
+          (stats) =>
+            stats.perfect <= stats.attempts &&
+            stats.mistakes >= stats.attempts - stats.perfect &&
+            stats.mistakes <= 10 * (stats.attempts - stats.perfect),
+          "Inkonsistente Range-Statistik",
+        ),
+    )
+    .default({}),
   game: gameSchema,
   freePlay: z.object({
     rounds: count,

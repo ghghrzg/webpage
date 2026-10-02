@@ -5,6 +5,7 @@ import {
   Check,
   ChevronRight,
   GraduationCap,
+  Grid2X2,
   Settings2,
   Spade,
   X,
@@ -13,12 +14,14 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import { TrainPage } from "./pages/TrainPage";
 import { PlayPage } from "./pages/PlayPage";
 import { StrategyPage } from "./pages/StrategyPage";
+import { RangesPage } from "./pages/RangesPage";
 import { StatsPage } from "./pages/StatsPage";
 import { Settings } from "./pages/Settings";
 import { useStore } from "./state";
 
 const TABS = [
   { id: "train", label: "Training", icon: GraduationCap },
+  { id: "ranges", label: "Ranges", icon: Grid2X2 },
   { id: "play", label: "Spielen", icon: Spade },
   { id: "strategy", label: "Strategie", icon: BookOpen },
   { id: "stats", label: "Statistik", icon: BarChart3 },
@@ -154,6 +157,9 @@ export default function App() {
         </div>
         <div hidden={tab !== "play"}>
           <PlayPage active={tab === "play" && !settings} />
+        </div>
+        <div hidden={tab !== "ranges"}>
+          <RangesPage active={tab === "ranges" && !settings} />
         </div>
         {tab === "strategy" && <StrategyPage />}
         {tab === "stats" && <StatsPage />}
