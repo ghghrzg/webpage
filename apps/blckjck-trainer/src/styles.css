@@ -2704,6 +2704,84 @@ input[type="checkbox"] {
     --card-h: 84px;
   }
 }
+.voice-control {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  position: relative;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.voice-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  white-space: nowrap;
+}
+.voice-toggle[aria-pressed="true"] {
+  color: var(--green);
+  background: var(--green-dark);
+  border-color: var(--green);
+}
+.training-switches {
+  position: relative;
+}
+.training-switches .voice-control {
+  flex: 1;
+  min-width: 120px;
+  max-width: 360px;
+  margin: 0;
+  position: static;
+  gap: 6px;
+}
+.voice-status {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.voice-status small {
+  font-size: 10px;
+  line-height: 1.4;
+}
+.voice-info summary {
+  cursor: pointer;
+  padding: 10px 4px;
+}
+.voice-info p {
+  position: absolute;
+  z-index: 15;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin: 4px 0 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+}
+.training-auto-next {
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 520px) {
+  .voice-control {
+    gap: 6px;
+    margin-bottom: 8px;
+    font-size: 10px;
+  }
+  .voice-toggle {
+    padding: 6px 8px;
+  }
+}
 .ranges-page {
   max-width: 720px;
   margin: 0 auto;

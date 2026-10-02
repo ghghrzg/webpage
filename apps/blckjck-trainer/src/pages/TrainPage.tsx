@@ -47,6 +47,7 @@ import {
   questionFromRound,
 } from "../core/trainingRound";
 import { useCardDeal } from "../useCardDeal";
+import { VoiceControl } from "../VoiceControl";
 
 const MODES: { id: Mode; label: string }[] = [
   { id: "practice", label: "Üben" },
@@ -273,16 +274,45 @@ export function TrainPage({ active }: { active: boolean }) {
       testDone ||
       !active ||
       animation.busy ||
-      (mode !== "test" && !state.settings.autoAdvance)
+      (mode !== "test" &&
+        !state.settings.autoAdvance &&
+        !(state.settings.playFullHands && round?.phase === "player"))
     )
       return;
     // Allow time to read the round result before starting a new exercise.
-    const timer = setTimeout(
-      continueHand,
-      mode === "test" ? 350 : round?.phase === "settled" ? 2400 : 1400,
-    );
-    return () => clearTimeout(timer);
-  }, [answer, testDone, active, state.settings.autoAdvance, animation.busy]);
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      clearTimeout(timer);
+      if (!document.hidden)
+        timer = setTimeout(
+          continueHand,
+          mode === "test"
+            ? 350
+            : round?.phase === "settled"
+              ? 2400
+              : round?.phase === "player"
+                ? answer.correct
+                  ? 700
+                  : 1600
+                : 1400,
+        );
+    };
+    schedule();
+    document.addEventListener("visibilitychange", schedule);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", schedule);
+    };
+  }, [
+    answer,
+    testDone,
+    active,
+    state.settings.autoAdvance,
+    state.settings.playFullHands,
+    animation.busy,
+    mode,
+    round,
+  ]);
   useShortcuts(
     respond,
     mark,
@@ -403,6 +433,16 @@ export function TrainPage({ active }: { active: boolean }) {
           />
           Handsumme anzeigen
         </label>
+        <VoiceControl
+          compact
+          active={active}
+          contextKey={`train-${dealNumber}-${answers.length}-${!!answer}-${mode}-${group}`}
+          allowed={canTime ? question!.allowed : []}
+          onAction={respond}
+          onNext={
+            answer && !testDone && !animation.busy ? continueHand : undefined
+          }
+        />
       </div>
       <div className="workspace">
         <section className="main-panel training-panel">
@@ -621,21 +661,21 @@ export function TrainPage({ active }: { active: boolean }) {
                           </strong>
                           <p>{answer.explanation}</p>
                         </div>
-                        <button
-                          className="next-button"
-                          onClick={continueHand}
-                          disabled={animation.busy}
-                          aria-label={
-                            round?.phase === "player"
-                              ? "Hand weiterspielen"
-                              : "Nächste Hand"
-                          }
-                        >
-                          {round?.phase === "player"
-                            ? "Weiterspielen"
-                            : "Weiter"}{" "}
-                          <ArrowRight size={18} />
-                        </button>
+                        {round?.phase === "player" &&
+                        state.settings.playFullHands ? (
+                          <span className="training-auto-next">
+                            Geht automatisch weiter …
+                          </span>
+                        ) : (
+                          <button
+                            className="next-button"
+                            onClick={continueHand}
+                            disabled={animation.busy}
+                            aria-label="Nächste Hand"
+                          >
+                            Weiter <ArrowRight size={18} />
+                          </button>
+                        )}
                       </>
                     )
                   ) : (

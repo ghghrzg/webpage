@@ -140,6 +140,12 @@ export function Settings({
             Übungsspiel bleiben in diesem Browser. Beim Löschen der Browserdaten
             gehen sie ohne Export verloren.
           </p>
+          <p>
+            Optional aktivierte Sprachsteuerung: Der Browser kann Audio an
+            seinen Spracherkennungsdienst übertragen. Die App speichert keine
+            Sprachaufnahmen. Ohne aktivierte Sprachsteuerung wird das Mikrofon
+            nicht verwendet.
+          </p>
           <div className="button-row">
             <button className="secondary" onClick={() => exportState(state)}>
               <Download size={16} /> JSON exportieren

@@ -275,11 +275,11 @@ test("full training hand evaluates each move, hides sums, and leaves the free-pl
   await expect(page.locator(".training-table .total-badge")).toHaveCount(0);
   await page.getByRole("button", { name: "Card – Karte ziehen" }).click();
   await expect(page.locator(".trainer-hand .playing-card")).toHaveCount(3);
-  await expect(
-    page.getByRole("button", { name: "Hand weiterspielen" }),
-  ).toBeVisible();
+  await expect(page.getByText("Geht automatisch weiter …")).toBeVisible();
   expect((await saved(page)).training.decisions["hard-5-vs-6"].seen).toBe(1);
-  await page.getByRole("button", { name: "Hand weiterspielen" }).click();
+  await expect(
+    page.getByRole("button", { name: "Card – Karte ziehen" }),
+  ).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Double – Verdoppeln" }),
   ).toBeDisabled();
@@ -321,7 +321,9 @@ test("trainer splits play out both hands and casino test stays in single-decisio
   await page.getByRole("button", { name: "Split – Teilen" }).click();
   await expect(page.locator(".trainer-hand")).toHaveCount(2);
   for (let i = 0; i < 2; i++) {
-    await page.getByRole("button", { name: "Hand weiterspielen" }).click();
+    await expect(
+      page.getByRole("button", { name: "Rest – Stehen bleiben" }),
+    ).toBeEnabled();
     await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   }
   await expect(page.getByText("Trainingsrunde beendet.")).toBeVisible();

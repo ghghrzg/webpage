@@ -30,6 +30,7 @@ import { markUncertain, recordAnswer } from "../core/training";
 import { useStore } from "../state";
 import { cardsInDealOrder } from "../core/trainingRound";
 import { useCardDeal } from "../useCardDeal";
+import { VoiceControl } from "../VoiceControl";
 
 interface Pending {
   attempted: Action;
@@ -56,6 +57,7 @@ export function PlayPage({ active }: { active: boolean }) {
   const [pending, setPending] = useState<Pending>();
   const [after, setAfter] = useState("");
   const [reset, setReset] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const locked = useRef(false);
   const hand = game.hands[game.active];
   const allowed = legalActions(game);
@@ -216,6 +218,34 @@ export function PlayPage({ active }: { active: boolean }) {
   useShortcuts(act, mark, start, active);
   const finished = game.phase === "settled" && !animation.busy;
   const betting = game.phase === "betting" || finished;
+  const autoContinue =
+    voiceEnabled &&
+    active &&
+    finished &&
+    !pending &&
+    !reset &&
+    bet <= game.bankroll;
+  const startRef = useRef(start);
+  startRef.current = start;
+  useEffect(() => {
+    if (!autoContinue) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      clearTimeout(timer);
+      if (!document.hidden) {
+        timer = setTimeout(() => {
+          if (!document.hidden && !document.querySelector("dialog[open]"))
+            startRef.current();
+        }, 3000);
+      }
+    };
+    schedule();
+    document.addEventListener("visibilitychange", schedule);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", schedule);
+    };
+  }, [autoContinue, game.round, bet]);
   const playCount = state.freePlay.correct + state.freePlay.wrong;
   return (
     <>
@@ -238,6 +268,14 @@ export function PlayPage({ active }: { active: boolean }) {
           </small>
         </div>
       </div>
+      <VoiceControl
+        active={active}
+        contextKey={`play-${decisionId}-${game.phase}-${!!pending}-${reset}`}
+        allowed={!animation.busy && !pending && !reset ? allowed : []}
+        onAction={act}
+        autoContinue
+        onEnabledChange={setVoiceEnabled}
+      />
       <div className="workspace">
         <section className="main-panel play-panel">
           <div className="panel-toolbar">
@@ -432,7 +470,11 @@ export function PlayPage({ active }: { active: boolean }) {
                   onClick={start}
                   disabled={bet > game.bankroll || animation.busy}
                 >
-                  {finished ? "Nächste Runde" : "Karten geben"}
+                  {autoContinue
+                    ? "Nächste Runde automatisch nach 3 s"
+                    : finished
+                      ? "Nächste Runde"
+                      : "Karten geben"}
                   <ArrowRight size={18} />
                 </button>
               </div>
