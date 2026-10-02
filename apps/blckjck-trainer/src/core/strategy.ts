@@ -12,8 +12,8 @@ export type StrategyCode = "H" | "S" | "D/H" | "D/S" | "P/H" | "P/S";
 export type HandType = "hard" | "soft" | "pair";
 export const ACTIONS: readonly Action[] = ["H", "S", "D", "P"];
 export const ACTION_LABEL: Record<Action, string> = {
-  H: "Hit",
-  S: "Stand",
+  H: "Card",
+  S: "Rest",
   D: "Double",
   P: "Split",
 };

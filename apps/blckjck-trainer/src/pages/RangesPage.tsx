@@ -392,7 +392,7 @@ export function RangesPage({ active: pageActive }: { active: boolean }) {
                   disabled={answered === 10}
                   title={`Offene Karten mit ${ACTION_LABEL[selected]} markieren`}
                 >
-                  Rest
+                  Offene
                 </button>
                 <button
                   className="primary"

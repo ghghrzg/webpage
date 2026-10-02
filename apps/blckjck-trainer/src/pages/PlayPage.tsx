@@ -480,7 +480,7 @@ export function PlayPage({ active }: { active: boolean }) {
                 <p>
                   {hand && game.bankroll < hand.bet
                     ? "Dein verfügbares Übungsguthaben reicht nicht für den zusätzlichen Einsatz."
-                    : "Wiesbaden Rules: Double ist nur mit den ersten zwei Karten und Hard 9–11 erlaubt, auch nach Split. Nach Hit ist kein Double mehr möglich."}
+                    : "Wiesbaden Rules: Double ist nur mit den ersten zwei Karten und Hard 9–11 erlaubt, auch nach Split. Nach Card ist kein Double mehr möglich."}
                 </p>
               </details>
             )}

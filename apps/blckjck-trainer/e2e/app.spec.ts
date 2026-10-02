@@ -77,7 +77,7 @@ test("auto-advance, uncertain drill exit and keyboard shortcuts work", async ({
   await page.getByRole("button", { name: "Einstellungen öffnen" }).click();
   await page.getByLabel("Automatisch nächste Trainingshand").check();
   await page.getByRole("button", { name: "Schließen", exact: true }).click();
-  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   await expect(
     page.getByRole("button", { name: "Nächste Hand" }),
   ).toBeVisible();
@@ -101,7 +101,7 @@ test("training marks without hints, counts answers once, and persists across rel
   ).toBeVisible();
   expect(Object.keys((await saved(page)).training.difficult)).toHaveLength(1);
   expect(Object.keys((await saved(page)).training.decisions)).toHaveLength(0);
-  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   await expect(
     page.getByRole("button", { name: "Nächste Hand" }),
   ).toBeVisible();
@@ -127,10 +127,10 @@ test("all pages and light theme fit narrow screens; strategy cells are inspectab
   await nav(page, "strategy");
   await page.getByRole("button", { name: "Paare", exact: true }).click();
   await page
-    .getByRole("button", { name: "8, 8 gegen 10: Hit", exact: true })
+    .getByRole("button", { name: "8, 8 gegen 10: Card", exact: true })
     .click();
   await expect(
-    page.getByText(/8, 8 gegen 10: Hit. ENHC-Ausnahme/),
+    page.getByText(/8, 8 gegen 10: Card. ENHC-Ausnahme/),
   ).toBeVisible();
   await page.getByLabel("Lernstand", { exact: true }).check();
   for (const tab of ["train", "play", "strategy", "stats"]) {
@@ -164,7 +164,7 @@ test("play warning preserves original intent and resumes exactly after reload", 
   await page.getByRole("button", { name: "Split – Teilen" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   expect((await saved(page)).game.bankroll).toBe(990);
-  await page.getByRole("button", { name: "Hit übernehmen" }).click();
+  await page.getByRole("button", { name: "Card übernehmen" }).click();
   const progressed = await saved(page);
   expect(progressed.freePlay).toMatchObject({
     correct: 0,
@@ -186,7 +186,7 @@ test("play warning preserves original intent and resumes exactly after reload", 
     path: `test-results/play-${info.project.name}.png`,
     fullPage: true,
   });
-  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   await expect(page.getByText("RUNDE ABGESCHLOSSEN")).toBeVisible();
   expect((await saved(page)).game.bankroll).toBe(990);
   expect((await saved(page)).freePlay.rounds).toBe(1);
@@ -199,14 +199,14 @@ test("after-action and disabled warnings execute immediately; insurance settles 
   state.game = fixture(["10", "6", "6", "2", "K", "4"]);
   await seed(page, state);
   await page.goto("./#play");
-  await page.getByRole("button", { name: "Hit – Karte ziehen" }).click();
-  await expect(page.getByText(/Deine letzte Entscheidung: Hit/)).toBeVisible();
+  await page.getByRole("button", { name: "Card – Karte ziehen" }).click();
+  await expect(page.getByText(/Deine letzte Entscheidung: Card/)).toBeVisible();
   expect((await saved(page)).game.hands[0].cards).toHaveLength(3);
   expect((await saved(page)).freePlay.wrong).toBe(1);
   await page.getByRole("button", { name: "Einstellungen öffnen" }).click();
   await page.getByLabel("Strategiehinweise im Spiel").selectOption("disabled");
   await page.getByRole("button", { name: "Schließen", exact: true }).click();
-  await page.getByRole("button", { name: "Hit – Karte ziehen" }).click();
+  await page.getByRole("button", { name: "Card – Karte ziehen" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect((await saved(page)).freePlay.wrong).toBe(2);
   const insurance = freshState();
@@ -217,7 +217,7 @@ test("after-action and disabled warnings execute immediately; insurance settles 
   );
   await page.reload();
   await page.getByRole("button", { name: "Versichern", exact: true }).click();
-  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   await expect(page.getByText("RUNDE ABGESCHLOSSEN")).toBeVisible();
   expect((await saved(page)).game.bankroll).toBe(1000);
 });
@@ -273,7 +273,7 @@ test("full training hand evaluates each move, hides sums, and leaves the free-pl
     page.getByRole("switch", { name: "Hand zu Ende spielen", exact: true }),
   ).toBeChecked();
   await expect(page.locator(".training-table .total-badge")).toHaveCount(0);
-  await page.getByRole("button", { name: "Hit – Karte ziehen" }).click();
+  await page.getByRole("button", { name: "Card – Karte ziehen" }).click();
   await expect(page.locator(".trainer-hand .playing-card")).toHaveCount(3);
   await expect(
     page.getByRole("button", { name: "Hand weiterspielen" }),
@@ -285,9 +285,9 @@ test("full training hand evaluates each move, hides sums, and leaves the free-pl
   ).toBeDisabled();
   await page.getByText("Warum ist Double gesperrt?").click();
   await expect(
-    page.getByText(/Nach Hit ist Double nicht mehr möglich/),
+    page.getByText(/Nach Card ist Double nicht mehr möglich/),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   await expect(page.getByText("Trainingsrunde beendet.")).toBeVisible();
   await expect(page.locator(".training-table .total-badge")).toHaveCount(0);
   const result = await saved(page);
@@ -322,7 +322,7 @@ test("trainer splits play out both hands and casino test stays in single-decisio
   await expect(page.locator(".trainer-hand")).toHaveCount(2);
   for (let i = 0; i < 2; i++) {
     await page.getByRole("button", { name: "Hand weiterspielen" }).click();
-    await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+    await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   }
   await expect(page.getByText("Trainingsrunde beendet.")).toBeVisible();
   expect((await saved(page)).sessions[0].total).toBe(3);
@@ -347,7 +347,7 @@ test("sums switch also hides dealer and player totals in free play and survives 
   await seed(page, state);
   await page.goto("./#play");
   await expect(page.locator(".casino-table .total-badge")).toHaveCount(0);
-  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   await expect(page.getByText("RUNDE ABGESCHLOSSEN")).toBeVisible();
   await expect(page.locator(".casino-table .total-badge")).toHaveCount(0);
   await page.reload();
@@ -372,7 +372,7 @@ test("cards deal sequentially, inputs wait for the flight, and hit adds one anim
   const table = page.locator(".casino-table");
   await expect(table).toHaveAttribute("aria-busy", "true");
   await expect(
-    page.getByRole("button", { name: "Hit – Karte ziehen" }),
+    page.getByRole("button", { name: "Card – Karte ziehen" }),
   ).toBeDisabled();
   await page.clock.runFor(20);
   await expect(table.getByRole("img")).toHaveCount(1);
@@ -381,13 +381,13 @@ test("cards deal sequentially, inputs wait for the flight, and hit adds one anim
   await page.clock.runFor(150);
   await expect(table.getByRole("img")).toHaveCount(3);
   await expect(
-    page.getByRole("button", { name: "Hit – Karte ziehen" }),
+    page.getByRole("button", { name: "Card – Karte ziehen" }),
   ).toBeDisabled();
   await page.clock.runFor(300);
   await expect(
-    page.getByRole("button", { name: "Hit – Karte ziehen" }),
+    page.getByRole("button", { name: "Card – Karte ziehen" }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "Hit – Karte ziehen" }).click();
+  await page.getByRole("button", { name: "Card – Karte ziehen" }).click();
   await expect(table).toHaveAttribute("aria-busy", "true");
   await page.clock.runFor(20);
   await expect(table.getByRole("img")).toHaveCount(4);
@@ -406,7 +406,7 @@ test("casino test hides all correctness feedback until the 100th decision", asyn
   await page.goto("./");
   await page.getByRole("tab", { name: "Casino-Test" }).click();
   for (let i = 0; i < 100; i++) {
-    await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+    await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
     if (i < 99) {
       await expect(page.getByText("Entscheidung gespeichert.")).toBeVisible();
       await expect(
@@ -437,7 +437,7 @@ test("installed service worker supports a complete offline reload", async ({
   await expect(
     page.getByRole("heading", { name: "Gute Entscheidungen." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Stand – Stehen bleiben" }).click();
+  await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   await expect(
     page.getByRole("button", { name: "Nächste Hand" }),
   ).toBeVisible();

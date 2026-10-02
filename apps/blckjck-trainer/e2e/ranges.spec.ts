@@ -75,9 +75,9 @@ test("ranges support taps, fast swipes, grouped undo, correction and persisted c
   await cards(page).nth(0).click();
   await select(page, "S");
   await cards(page).nth(0).click();
-  await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Stand");
+  await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Rest");
   await undo(page).click();
-  await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Hit");
+  await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Card");
   await undo(page).click();
   await expect(page.getByText("0/10 markiert", { exact: true })).toBeVisible();
 
@@ -90,19 +90,19 @@ test("ranges support taps, fast swipes, grouped undo, correction and persisted c
   await expect(page.getByText("0/10 markiert", { exact: true })).toBeVisible();
   await swipeRow(page, info.project.name === "mobile");
   await select(page, "H");
-  await page.getByRole("button", { name: "Rest", exact: true }).click();
+  await page.getByRole("button", { name: "Offene", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Prüfen", exact: true }),
   ).toBeEnabled();
   await undo(page).click();
   await expect(page.getByText("5/10 markiert", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Rest", exact: true }).click();
+  await page.getByRole("button", { name: "Offene", exact: true }).click();
   await select(page, "S");
   await page.getByRole("button", { name: "Alles", exact: true }).click();
   await expect(cards(page).filter({ hasText: "S" })).toHaveCount(10);
   await undo(page).click();
   await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Split");
-  await expect(cards(page).nth(9)).toHaveAccessibleName("Dealer A: Hit");
+  await expect(cards(page).nth(9)).toHaveAccessibleName("Dealer A: Card");
 
   const lastWrong = current.answers[9] === "H" ? "S" : "H";
   await select(page, lastWrong);
@@ -240,20 +240,20 @@ test("keyboard painting and undo stay scoped to the active ranges tab", async ({
   await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Split");
   await page.keyboard.press("s");
   await page.keyboard.press("Enter");
-  await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Stand");
+  await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Rest");
   await page.keyboard.press("Control+z");
   await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Split");
   await page.getByRole("button", { name: "Einstellungen öffnen" }).click();
   await page.keyboard.press("h");
   await page.getByRole("button", { name: "Schließen", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Stand auswählen" }),
+    page.getByRole("button", { name: "Rest auswählen" }),
   ).toHaveAttribute("aria-pressed", "true");
   await nav(page, "strategy");
   await page.keyboard.press("d");
   await nav(page, "ranges");
   await expect(
-    page.getByRole("button", { name: "Stand auswählen" }),
+    page.getByRole("button", { name: "Rest auswählen" }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(cards(page).nth(0)).toHaveAccessibleName("Dealer 2: Split");
   expect((await saved(page)).strategyRanges).toEqual({});
@@ -320,11 +320,9 @@ test("overview includes every solution and stats; card mode reveals totals witho
   });
   await page.getByRole("button", { name: "Übersicht", exact: true }).click();
   await expect(page.locator(".ranges-overview-summary")).toContainText("1/17");
-  const entry = page
-    .locator(".ranges-overview-card")
-    .filter({
-      has: page.getByRole("heading", { name: category, exact: true }),
-    });
+  const entry = page.locator(".ranges-overview-card").filter({
+    has: page.getByRole("heading", { name: category, exact: true }),
+  });
   await expect(entry).toContainText("10 Feldern");
   await page.screenshot({
     path: `test-results/ranges-overview-${info.project.name}.png`,

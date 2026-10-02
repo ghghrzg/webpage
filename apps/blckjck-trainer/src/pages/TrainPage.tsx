@@ -73,7 +73,7 @@ interface Answer {
 const LESSONS: Record<Group, { title: string; text: string }> = {
   all: {
     title: "Eine Entscheidung nach der anderen.",
-    text: "Vergleiche deine Hand mit der offenen Dealerkarte. Hit zieht eine Karte, Stand beendet deine Hand. Double verdoppelt den Einsatz, Split teilt ein Paar.",
+    text: "Vergleiche deine Hand mit der offenen Dealerkarte. Card zieht eine Karte, Rest beendet deine Hand. Double verdoppelt den Einsatz, Split teilt ein Paar.",
   },
   hard: {
     title: "Die Grenzen lernen.",
@@ -581,7 +581,7 @@ export function TrainPage({ active }: { active: boolean }) {
                     <summary>Warum ist Double gesperrt?</summary>
                     <p>
                       Wiesbaden Rules: nur mit den ersten zwei Karten und Hard
-                      9, 10 oder 11. Nach Hit ist Double nicht mehr möglich;
+                      9, 10 oder 11. Nach Card ist Double nicht mehr möglich;
                       nach Split gelten dieselben Grenzen.
                     </p>
                   </details>

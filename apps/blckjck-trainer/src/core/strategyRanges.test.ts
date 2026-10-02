@@ -137,10 +137,10 @@ describe("strategy ranges", () => {
       mistakes: 1,
       lastSeen: 200,
     });
-    expect(describeRange(category)).toEqual(["2–9 → Split", "10–A → Hit"]);
+    expect(describeRange(category)).toEqual(["2–9 → Split", "10–A → Card"]);
     expect(
       describeRange(STRATEGY_RANGES.find((range) => range.id === "pair-9")!),
-    ).toEqual(["2–6 → Split", "7 → Stand", "8–9 → Split", "10–A → Stand"]);
+    ).toEqual(["2–6 → Split", "7 → Rest", "8–9 → Split", "10–A → Rest"]);
   });
 
   it("prioritizes categories with errors, keeps all categories eligible and avoids repeats", () => {

@@ -148,10 +148,10 @@ export function StrategyPage() {
             ) : (
               <>
                 <span>
-                  <i className="legend-dot code-H" />H · Hit
+                  <i className="legend-dot code-H" />H · {ACTION_LABEL.H}
                 </span>
                 <span>
-                  <i className="legend-dot code-S" />S · Stand
+                  <i className="legend-dot code-S" />S · {ACTION_LABEL.S}
                 </span>
                 <span>
                   <i className="legend-dot code-D" />D · Double
