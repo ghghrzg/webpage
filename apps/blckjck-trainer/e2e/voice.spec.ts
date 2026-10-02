@@ -10,6 +10,7 @@ async function setup(page: Page, state: AppState) {
       const instances: any[] = [];
       class Recognition {
         running = false;
+        results: any[] = [];
         onstart: any;
         onresult: any;
         onend: any;
@@ -39,7 +40,7 @@ async function running(page: Page) {
     () => (window as any).__speech.filter((item: any) => item.running).length,
   );
 }
-async function speak(page: Page, transcript: string, final = true) {
+async function speak(page: Page, transcript: string | string[], final = true) {
   await expect.poll(() => running(page)).toBe(1);
   await page.evaluate(
     ({ transcript, final }) => {
@@ -47,10 +48,17 @@ async function speak(page: Page, transcript: string, final = true) {
         (item: any) => item.running,
       );
       const handler = instance.onresult;
+      const result = Object.assign(
+        (Array.isArray(transcript) ? transcript : [transcript]).map((text) => ({
+          transcript: text,
+        })),
+        { isFinal: final },
+      );
       const event = {
-        resultIndex: 0,
-        results: [{ isFinal: final, 0: { transcript } }],
+        resultIndex: instance.results.length,
+        results: [...instance.results, result],
       };
+      if (final) instance.results = event.results;
       (window as any).__lateResult = () => handler(event);
       handler(event);
       handler(event); // Some engines repeat final results: count only once.
@@ -82,9 +90,26 @@ test("voice training ignores interim and stale results, continues hands and paus
     .click();
   await speak(page, "card", false);
   expect((await saved(page)).training.decisions).toEqual({});
+  await speak(page, "unrecognized");
   await speak(page, "double"); // Not legal for hard 5.
   expect((await saved(page)).training.decisions).toEqual({});
-  await speak(page, "card");
+  // Rejected utterances keep the same continuous session alive.
+  expect(await page.evaluate(() => (window as any).__speech.length)).toBe(1);
+  expect(
+    await page.evaluate(() => (window as any).__speech[0].continuous),
+  ).toBe(true);
+  expect(
+    await page.evaluate(() => (window as any).__speech[0].maxAlternatives),
+  ).toBe(5);
+  // Recover if the browser itself ends a continuous session.
+  await page.evaluate(() => {
+    const instance = (window as any).__speech[0];
+    instance.running = false;
+    instance.onend();
+  });
+  await expect.poll(() => running(page)).toBe(1);
+  expect(await page.evaluate(() => (window as any).__speech.length)).toBe(2);
+  await speak(page, ["Caught.", "Cart."]);
   await expect(page.locator(".trainer-hand .playing-card")).toHaveCount(3);
   expect((await saved(page)).training.decisions["hard-5-vs-6"].seen).toBe(1);
   await expect(
@@ -178,6 +203,7 @@ test("permission failures stop retries and unsupported browsers keep manual cont
       .onerror({ error: "not-allowed" }),
   );
   await expect(mic(page)).toContainText("Mikrofonzugriff nicht erlaubt");
+  await expect(mic(page)).toContainText("(not-allowed)");
   await expect.poll(() => running(page)).toBe(0);
   await expect(
     mic(page).getByRole("button", { name: "Sprachsteuerung einschalten" }),
@@ -190,6 +216,9 @@ test("permission failures stop retries and unsupported browsers keep manual cont
   await expect(
     mic(page).getByRole("button", { name: "Sprachsteuerung einschalten" }),
   ).toBeDisabled();
+  await expect(mic(page)).toContainText(
+    "Dieser Browser stellt keine Spracherkennung bereit.",
+  );
   await page.getByRole("button", { name: "Rest – Stehen bleiben" }).click();
   await expect(
     page.getByRole("button", { name: "Nächste Hand" }),

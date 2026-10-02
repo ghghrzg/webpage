@@ -3,7 +3,7 @@ import { Mic, MicOff } from "lucide-react";
 import { ACTION_LABEL, type Action } from "./core/strategy";
 import {
   speechConstructor,
-  voiceCommand,
+  voiceAlternatives,
   voiceError,
   type SpeechRecognizer,
 } from "./core/voice";
@@ -66,58 +66,77 @@ export function VoiceControl(props: Props) {
       current = recognition;
       let handled = false;
       let ended = false;
+      const consumed = new Set<number>();
+      const startedAt = performance.now();
       recognition.lang = "en-US";
-      // One utterance per instance: duplicate final results cannot become a
-      // second move, and each new decision gets a fresh recognition context.
-      recognition.continuous = false;
+      // Keep listening through silence and rejected utterances. Only a new
+      // decision/pause replaces the context, so late audio cannot make a move.
+      recognition.continuous = true;
       recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
+      recognition.maxAlternatives = 5;
       recognition.onstart = () => {
         if (usable() && !ended) setListening(true);
       };
       recognition.onresult = (event) => {
         if (!usable() || handled || ended || current !== recognition) return;
-        const result = event.results[event.resultIndex];
-        if (!result?.isFinal) return;
-        handled = true;
-        const transcript = result[0]?.transcript ?? "";
-        const command = voiceCommand(transcript);
-        console.info("[BJ Voice]", {
-          transcript,
-          language: recognition.lang,
-          command: command ?? null,
-          accepted:
-            command === "next"
-              ? !!latest.current.onNext
-              : !!command && latest.current.allowed.includes(command),
-        });
-        if (command === "next" && latest.current.onNext) {
-          setMessage("Erkannt: Weiter");
-          latest.current.onNext();
-        } else if (
-          command &&
-          command !== "next" &&
-          latest.current.allowed.includes(command)
+        for (
+          let index = event.resultIndex;
+          index < event.results.length;
+          index++
         ) {
-          setMessage(`Erkannt: ${ACTION_LABEL[command]}`);
-          latest.current.onAction(command);
-        } else {
-          setMessage(
-            command
-              ? "Diese Aktion ist gerade nicht verfügbar."
-              : latest.current.autoContinue
-                ? "Bitte Card, Rest, Double oder Split sagen."
-                : "Bitte Card, Rest, Double, Split oder Next sagen.",
+          const result = event.results[index];
+          if (!result?.isFinal || consumed.has(index)) continue;
+          consumed.add(index);
+          const alternatives = Array.from(result);
+          const transcript = alternatives[0]?.transcript ?? "";
+          const command = voiceAlternatives(
+            alternatives.map((item) => item.transcript),
           );
+          console.info("[BJ Voice]", {
+            transcript,
+            alternatives,
+            language: recognition.lang,
+            command: command ?? null,
+            accepted:
+              command === "next"
+                ? !!latest.current.onNext
+                : !!command && latest.current.allowed.includes(command),
+          });
+          if (command === "next" && latest.current.onNext) {
+            handled = true;
+            setMessage("Erkannt: Weiter");
+            latest.current.onNext();
+            return;
+          } else if (
+            command &&
+            command !== "next" &&
+            latest.current.allowed.includes(command)
+          ) {
+            handled = true;
+            setMessage(`Erkannt: ${ACTION_LABEL[command]}`);
+            latest.current.onAction(command);
+            return;
+          } else {
+            setMessage(
+              command
+                ? "Diese Aktion ist gerade nicht verfügbar."
+                : latest.current.autoContinue
+                  ? "Bitte Card, Rest, Double oder Split sagen."
+                  : "Bitte Card, Rest, Double, Split oder Next sagen.",
+            );
+          }
         }
-        // Flush the utterance even if the browser has not emitted end yet.
-        recognition.abort();
       };
       recognition.onerror = ({ error }) => {
         if (disposed || ended) return;
+        console.warn("[BJ Voice] recognition error", {
+          error,
+          language: recognition.lang,
+          secureContext: window.isSecureContext,
+        });
         if (error === "no-speech" || (error === "aborted" && handled)) return;
         fatal = true;
-        setMessage(voiceError(error));
+        setMessage(`${voiceError(error)} (${error})`);
         setEnabled(false);
         setListening(false);
       };
@@ -125,11 +144,18 @@ export function VoiceControl(props: Props) {
         if (disposed || ended) return;
         ended = true;
         setListening(false);
-        if (usable()) timer = setTimeout(start, 350);
+        // Browsers may still end a continuous session. Restart immediately
+        // after a normal session; rate-limit only repeated immediate ends.
+        if (usable())
+          timer = setTimeout(
+            start,
+            Math.max(0, 250 - (performance.now() - startedAt)),
+          );
       };
       try {
         recognition.start();
-      } catch {
+      } catch (error) {
+        console.warn("[BJ Voice] start failed", error);
         fatal = true;
         setEnabled(false);
         setListening(false);
@@ -175,7 +201,9 @@ export function VoiceControl(props: Props) {
       <div className="voice-status" role="status">
         <span>
           {!supported
-            ? "Spracherkennung hier nicht verfügbar."
+            ? !window.isSecureContext
+              ? "Sprachsteuerung benötigt HTTPS (oder localhost)."
+              : "Dieser Browser stellt keine Spracherkennung bereit."
             : enabled
               ? !running
                 ? "Pausiert"
@@ -205,6 +233,12 @@ export function VoiceControl(props: Props) {
           Text und Befehlszuordnung erscheinen zur Fehlersuche unter „[BJ
           Voice]“ in der Browserkonsole. In anderen Tabs, Dialogen und während
           des Austeilens pausiert die Erkennung.
+        </p>
+        <p>
+          Safari auf dem iPhone: Siri in den iOS-Einstellungen aktivieren und
+          den Mikrofonzugriff für die Website erlauben. Die Seite über HTTPS
+          öffnen; eine lokale HTTP-Adresse im WLAN reicht nicht. Fehlt die
+          Sprachschnittstelle im Browser, kann die App sie nicht einschalten.
         </p>
       </details>
     </div>
