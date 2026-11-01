@@ -5,7 +5,7 @@ export type Phase = PhaseId | 'allRed';
 export type LightColor = 'red' | 'redYellow' | 'yellow' | 'green';
 export type TransitionKind = 'none' | 'yellow' | 'allRed' | 'redYellow';
 export type VehicleKind = 'regular' | 'sport' | 'motorcycle';
-export type ControlMode = 'auto' | 'manual';
+export type GameMode = 'simulation' | 'challenge';
 export type GameEvent = 'success' | 'warning' | 'crash';
 export type StopReason =
   | 'moving'
@@ -23,14 +23,6 @@ export type ControlAction =
   | { type: 'phase'; phaseId: PhaseId }
   | { type: 'scene'; phaseIds: PhaseId[] }
   | { type: 'allRed' };
-
-export type ManualTransition = {
-  target: 'red' | 'green';
-  kind: 'yellow' | 'redYellow';
-  switchMs: number;
-  totalMs: number;
-  transitionId: number;
-};
 
 export type LaneConfig = {
   id: string;
@@ -119,6 +111,7 @@ export type LevelConfig = {
   approaches: ApproachConfig[];
   phases: SignalPhaseConfig[];
   controlButtons: ControlButtonConfig[];
+  autoGroups?: PhaseId[][];
 };
 
 export type Vehicle = {
@@ -153,6 +146,10 @@ export type Vehicle = {
 
 export type GameState = {
   levelId: string;
+  gameMode: GameMode;
+  elapsedMs: number;
+  incidents: number;
+  activePhaseIds: PhaseId[];
   nextVehicleId: number;
   running: boolean;
   paused: boolean;
@@ -164,9 +161,7 @@ export type GameState = {
   streak: number;
   bestStreak: number;
   remainingMs: number;
-  controlMode: ControlMode;
   manualLights: Record<PhaseId, LightColor>;
-  manualTransitions: Record<PhaseId, ManualTransition | null>;
   manualSceneRequest?: PhaseId[] | null;
   phase: Phase;
   targetPhase: Phase;
@@ -176,8 +171,9 @@ export type GameState = {
   transitionTotalMs: number;
   transitionId: number;
   greenMs: number;
+  currentGroupGreenMs: number;
+  lastGroupGreenMs: number;
   switchMs: number;
-  spawnMs: number;
   spawnMsByDirection: Record<Direction, number>;
   spillCooldownMs: number;
   vehicles: Vehicle[];

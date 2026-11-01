@@ -14,10 +14,10 @@ export class AudioService {
     try {
       const saved = localStorage.getItem('traffic-light-muted');
       this.isMuted = saved === 'true';
-      const horn = Number(localStorage.getItem('traffic-light-volume-horn'));
-      const lightClick = Number(localStorage.getItem('traffic-light-volume-light-click'));
-      if (!Number.isNaN(horn)) this.volumes.horn = this.clampVolume(horn);
-      if (!Number.isNaN(lightClick)) this.volumes.lightClick = this.clampVolume(lightClick);
+      const horn = localStorage.getItem('traffic-light-volume-horn');
+      const lightClick = localStorage.getItem('traffic-light-volume-light-click');
+      if (horn !== null && Number.isFinite(Number(horn))) this.volumes.horn = this.clampVolume(Number(horn));
+      if (lightClick !== null && Number.isFinite(Number(lightClick))) this.volumes.lightClick = this.clampVolume(Number(lightClick));
     } catch {
       this.isMuted = false;
     }
@@ -34,7 +34,7 @@ export class AudioService {
   }
 
   private clampVolume(value: number) {
-    return Math.max(0, Math.min(1, value));
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.5;
   }
 
   private ensureAudioContext() {
@@ -45,12 +45,23 @@ export class AudioService {
 
   toggle() {
     this.isMuted = !this.isMuted;
+    this.unlock();
     this.saveMuteState();
     return this.isMuted;
   }
 
   getMuted() {
     return this.isMuted;
+  }
+
+  unlock() {
+    if (this.isMuted) return;
+    try {
+      this.ensureAudioContext();
+      if (this.audioContext?.state === 'suspended') void this.audioContext.resume().catch(() => {});
+    } catch {
+      // Audio is optional in browsers without Web Audio support.
+    }
   }
 
   getVolumes() {
@@ -70,9 +81,10 @@ export class AudioService {
     toFrequency?: number,
   ) {
     if (this.isMuted) return;
-    this.ensureAudioContext();
     try {
+      this.ensureAudioContext();
       const ctx = this.audioContext!;
+      if (ctx.state !== 'running') return;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = type;

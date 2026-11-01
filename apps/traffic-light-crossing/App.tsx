@@ -8,13 +8,16 @@ import {
   VolumeXIcon,
 } from 'lucide-react';
 import { audioService } from './services/audioService';
+import { SevenSegmentDisplay } from './SevenSegmentDisplay';
 import {
   applyManualScene,
   createInitialGame,
   getCenter,
+  formatTime,
   getDirectionLabel,
   getPhaseLabel,
   getStopProgress,
+  leftTurnGuidePoints,
   lightLabel,
   lightForPhase,
   phaseForVehicle,
@@ -24,8 +27,11 @@ import {
   tickGame,
   vehicleTransform,
 } from './game/engine';
+import { advanceAutoSwitch, initialAutoSwitchCursor } from './game/automation';
+import { cycleSignalGroup, signalGroupsForPhase } from './game/signalGroups';
+import { CityStatsState, PersistedState, STORAGE_KEY, MAX_HISTORY_MS, loadPersistedState } from './game/persistence';
 import { DEFAULT_LEVEL_ID, getLevelById, LEVELS } from './game/levels';
-import { ControlButtonConfig, Direction, GameEvent, GameState, LightColor, Phase, StopReason } from './game/types';
+import { ControlButtonConfig, Direction, GameMode, GameState, LightColor, Phase, StopReason } from './game/types';
 
 const formatSeconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
@@ -54,31 +60,6 @@ const waitColor = (waitMs: number, targetWaitMs: number) => {
   return `rgb(${Math.round(250 - 11 * t)}, ${Math.round(204 - 136 * t)}, ${Math.round(21 + 47 * t)})`;
 };
 
-const STORAGE_KEY = 'traffic-light-crossing-save-v2';
-const MAX_HISTORY_MS = 10 * 60 * 1000;
-
-type TrafficHistorySample = {
-  ts: number;
-  cars: number;
-  satisfactionSum: number;
-};
-
-type CityStatsState = {
-  allCars: number;
-  allSatisfactionSum: number;
-  history: TrafficHistorySample[];
-};
-
-type PersistedState = {
-  levelId: string;
-  game: GameState;
-  cityStats: CityStatsState;
-  autoSwitchEnabled: boolean;
-  autoSwitchSeconds: number;
-  autoSwitchSecondsByPhase?: Record<string, number>;
-  autoSwitchSensorMode?: boolean;
-};
-
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const nextHalfStep = (value: number) => clamp(Math.floor(value * 2) / 2 + 0.5, 0, 99.5);
 const prevHalfStep = (value: number) => clamp(Math.ceil(value * 2) / 2 - 0.5, 0, 99.5);
@@ -94,18 +75,6 @@ const waitToSatisfaction = (waitMs: number, targetWaitMs: number) => {
   return clamp(10 * (1 - ratio / 2), 0, 10);
 };
 
-const loadPersistedState = (): PersistedState | null => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedState;
-    if (!parsed?.levelId || !parsed?.game || !parsed?.cityStats) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-};
-
 const stopReasonLabel: Record<StopReason, string> = {
   moving: 'faehrt',
   red_light: 'Rot',
@@ -119,34 +88,54 @@ const stopReasonLabel: Record<StopReason, string> = {
 };
 
 const isInteractiveTarget = (target: EventTarget | null) =>
-  target instanceof HTMLElement &&
-  Boolean(target.closest('button, a, input, textarea, select, [role="button"]'));
+  target instanceof Element &&
+  Boolean(target.closest('button, a, input, textarea, select, [role="button"], [contenteditable="true"]'));
 
 const SignalHead: React.FC<{
   x: number;
   y: number;
   light: LightColor;
   label: string;
-  arrow?: 'up' | 'down';
+  arrow?: 'up' | 'down' | 'left' | 'right';
+  rotation?: number;
+  phaseId: string;
+  groupMember: boolean;
+  previewSource: boolean;
+  groupCount: number;
+  onPreview: () => void;
+  onPreviewEnd: () => void;
+  onCycle: (direction: number) => void;
   onClick: () => void;
-}> = ({ x, y, light, label, arrow, onClick }) => {
+}> = ({ x, y, light, label, arrow, rotation = 0, phaseId, groupMember, previewSource, groupCount, onPreview, onPreviewEnd, onCycle, onClick }) => {
   const redOn = light === 'red' || light === 'redYellow';
   const yellowOn = light === 'yellow' || light === 'redYellow';
   const greenOn = light === 'green';
   const arrowPath = 'M0 -4.1 L3.4 -0.2 H1.35 V3.4 H-1.35 V-0.2 H-3.4 Z';
+  const arrowRotation = (arrow === 'down' ? 180 : arrow === 'right' ? 90 : arrow === 'left' ? -90 : 0) - rotation;
 
   return (
   <g
-    className="signal-head"
-    transform={`translate(${x} ${y})`}
+    className={`signal-head${groupMember ? ' group-preview' : ''}${previewSource ? ' preview-source' : ''}`}
+    data-phase-id={phaseId}
+    transform={`translate(${x} ${y}) rotate(${rotation})`}
     onClick={onClick}
     role="button"
     tabIndex={0}
     aria-label={label}
+    aria-describedby={previewSource ? 'signal-group-info' : undefined}
+    onMouseEnter={onPreview}
+    onMouseLeave={onPreviewEnd}
+    onFocus={onPreview}
+    onBlur={onPreviewEnd}
     onKeyDown={(event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
+        event.stopPropagation();
         onClick();
+      } else if (groupCount > 1 && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        event.stopPropagation();
+        onCycle(event.key === 'ArrowRight' ? 1 : -1);
       }
     }}
   >
@@ -166,13 +155,13 @@ const SignalHead: React.FC<{
     <circle cy="24" r="9" fill={greenOn ? '#22c55e' : '#12351f'} className={greenOn ? 'lamp on' : 'lamp'} />
     {arrow && (
       <>
-        <g transform={`translate(0 -24) ${arrow === 'up' ? '' : 'rotate(180)'}`}>
+        <g transform={`translate(0 -24) rotate(${arrowRotation})`}>
           <path d={arrowPath} fill={redOn ? '#fff7f7' : '#4b5563'} opacity={redOn ? 0.95 : 0.85} />
         </g>
-        <g transform={`translate(0 0) ${arrow === 'up' ? '' : 'rotate(180)'}`}>
+        <g transform={`translate(0 0) rotate(${arrowRotation})`}>
           <path d={arrowPath} fill={yellowOn ? '#fffbeb' : '#4b5563'} opacity={yellowOn ? 0.95 : 0.85} />
         </g>
-        <g transform={`translate(0 24) ${arrow === 'up' ? '' : 'rotate(180)'}`}>
+        <g transform={`translate(0 24) rotate(${arrowRotation})`}>
           <path d={arrowPath} fill={greenOn ? '#f0fdf4' : '#4b5563'} opacity={greenOn ? 0.95 : 0.85} />
         </g>
       </>
@@ -212,26 +201,19 @@ const PushButton: React.FC<{
 );
 
 const App: React.FC = () => {
+  useEffect(() => {
+    const unlockAudio = () => audioService.unlock();
+    window.addEventListener('pointerdown', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+  }, []);
   const persisted = useMemo(() => loadPersistedState(), []);
   const [levelId, setLevelId] = useState(persisted?.levelId || DEFAULT_LEVEL_ID);
   const level = useMemo(() => getLevelById(levelId), [levelId]);
-  const [game, setGame] = useState(() => {
-    if (persisted?.game && persisted.levelId === level.id) {
-      return {
-        ...persisted.game,
-        running: true,
-        paused: false,
-        over: false,
-      };
-    }
-    return {
-      ...createInitialGame(level),
-      running: true,
-      paused: false,
-      over: false,
-      message: 'Simulation aktiv.',
-    };
-  });
+  const [game, setGame] = useState<GameState>(() => persisted?.game ?? createInitialGame(level));
   const [cityStats, setCityStats] = useState<CityStatsState>(
     persisted?.cityStats || { allCars: 0, allSatisfactionSum: 0, history: [] },
   );
@@ -283,16 +265,28 @@ const App: React.FC = () => {
   const [soundVolumes, setSoundVolumes] = useState(() => audioService.getVolumes());
   const [momentaryImpulse, setMomentaryImpulse] = useState<string | null>(null);
   const [cursorBoardPos, setCursorBoardPos] = useState<{ x: number; y: number } | null>(null);
-  const [fps, setFps] = useState(0);
+  const [signalPreview, setSignalPreview] = useState<{ phaseId: string; index: number } | null>(null);
+  const boardRef = useRef<SVGSVGElement>(null);
   const [clockMs, setClockMs] = useState(() => Date.now());
   const previousPhaseLightsRef = useRef<Record<string, LightColor> | null>(null);
   const honkScheduleRef = useRef<Map<number, number>>(new Map());
   const gameRef = useRef(game);
-  const autoSwitchPhaseIndexRef = useRef(0);
-  const autoSwitchNextAtRef = useRef<number | null>(null);
-  const autoSwitchCyclePhaseRef = useRef<string | null>(null);
-  const autoSwitchCountdownStartedRef = useRef(false);
+  const updateGame = useCallback((action: React.SetStateAction<GameState>) => {
+    const next = typeof action === 'function' ? action(gameRef.current) : action;
+    gameRef.current = next;
+    setGame(next);
+  }, []);
+  const autoSwitchRef = useRef(initialAutoSwitchCursor());
+  const autoSwitchEnabledRef = useRef(autoSwitchEnabled);
   const [autoSwitchRemainingMs, setAutoSwitchRemainingMs] = useState(0);
+  const updateAutoSwitch = useCallback((enabled: boolean) => {
+    autoSwitchEnabledRef.current = enabled;
+    if (!enabled) {
+      autoSwitchRef.current = initialAutoSwitchCursor();
+      setAutoSwitchRemainingMs(0);
+    }
+    setAutoSwitchEnabled(enabled);
+  }, []);
   const statsProgressRef = useRef({ cars: game.cars, completedWaitMs: game.completedWaitMs });
 
   const center = getCenter(level);
@@ -302,8 +296,8 @@ const App: React.FC = () => {
   const autoSwitchUnlocked = cityStats.allCars >= 100;
   const autoSwitchAdvancedUnlocked = cityStats.allCars >= 1000;
   useEffect(() => {
-    if (!autoSwitchUnlocked && autoSwitchEnabled) setAutoSwitchEnabled(false);
-  }, [autoSwitchEnabled, autoSwitchUnlocked]);
+    if (!autoSwitchUnlocked && autoSwitchEnabled) updateAutoSwitch(false);
+  }, [autoSwitchEnabled, autoSwitchUnlocked, updateAutoSwitch]);
   useEffect(() => {
     if (!autoSwitchAdvancedUnlocked && autoSwitchSensorMode) setAutoSwitchSensorMode(false);
   }, [autoSwitchAdvancedUnlocked, autoSwitchSensorMode]);
@@ -416,7 +410,7 @@ const App: React.FC = () => {
 
   const reset = useCallback(() => {
     const next = {
-      ...createInitialGame(level),
+      ...createInitialGame(level, gameRef.current.gameMode),
       running: true,
       paused: false,
       over: false,
@@ -424,17 +418,15 @@ const App: React.FC = () => {
     };
     statsProgressRef.current = { cars: next.cars, completedWaitMs: next.completedWaitMs };
     honkScheduleRef.current.clear();
-    autoSwitchCyclePhaseRef.current = null;
-    autoSwitchNextAtRef.current = null;
-    autoSwitchCountdownStartedRef.current = false;
-    setGame(next);
+    autoSwitchRef.current = initialAutoSwitchCursor();
+    updateGame(next);
   }, [level]);
 
   const start = useCallback(() => {
-    setGame((prev) => {
-      if (prev.levelId !== level.id) {
+    updateGame((prev) => {
+      if (prev.levelId !== level.id || prev.over) {
         const next = {
-          ...createInitialGame(level),
+          ...createInitialGame(level, gameRef.current.gameMode),
           running: true,
           paused: false,
           over: false,
@@ -442,9 +434,7 @@ const App: React.FC = () => {
         };
         statsProgressRef.current = { cars: next.cars, completedWaitMs: next.completedWaitMs };
         honkScheduleRef.current.clear();
-        autoSwitchCyclePhaseRef.current = null;
-        autoSwitchNextAtRef.current = null;
-        autoSwitchCountdownStartedRef.current = false;
+        autoSwitchRef.current = initialAutoSwitchCursor();
         return next;
       }
       return {
@@ -458,7 +448,7 @@ const App: React.FC = () => {
   }, [level]);
 
   const togglePause = useCallback(() => {
-    setGame((prev) => {
+    updateGame((prev) => {
       if (!prev.running || prev.over) return prev;
       return { ...prev, paused: !prev.paused, message: prev.paused ? '' : 'Pausiert.' };
     });
@@ -480,7 +470,7 @@ const App: React.FC = () => {
       value: number,
       apply: (next: number) => void,
     ) => {
-      if (event.key === '+' || event.key === '.') {
+      if (event.key === '+') {
         event.preventDefault();
         event.stopPropagation();
         apply(nextHalfStep(value));
@@ -507,24 +497,6 @@ const App: React.FC = () => {
     [autoSwitchAdvancedUnlocked, autoSwitchSeconds, autoSwitchSecondsByPhase],
   );
 
-  const getNextAutoSwitchPhase = useCallback((fromPhaseId: string) => {
-    const fromIndex = level.phases.findIndex((phase) => phase.id === fromPhaseId);
-    if (fromIndex < 0 || level.phases.length === 0) return null;
-
-    for (let offset = 1; offset <= level.phases.length; offset += 1) {
-      const candidate = level.phases[(fromIndex + offset) % level.phases.length];
-      if (getPhaseAutoSwitchMs(candidate.id) > 0) return candidate.id;
-    }
-    return null;
-  }, [getPhaseAutoSwitchMs, level.phases]);
-
-  const getFirstAutoSwitchPhase = useCallback(() => {
-    for (const phase of level.phases) {
-      if (getPhaseAutoSwitchMs(phase.id) > 0) return phase.id;
-    }
-    return null;
-  }, [getPhaseAutoSwitchMs, level.phases]);
-
   const applyIntervalToAllPhases = useCallback((seconds: number) => {
     const value = clamp(seconds, 0, 99.9);
     const byPhase = level.phases.reduce(
@@ -547,32 +519,25 @@ const App: React.FC = () => {
     setPhaseSecondsInputByPhase(inputsByPhase);
   }, [level.phases]);
 
-  const phaseHasWaitingVehicle = useCallback((state: GameState, phaseId: string) => {
-    return state.vehicles.some(
-      (vehicle) =>
-        !vehicle.crashed &&
-        phaseForVehicle(level, vehicle) === phaseId &&
-        vehicle.progress >= 0 &&
-        vehicle.progress <= stopProgress + 12,
-    );
-  }, [level, stopProgress]);
+  const resetAutoSwitchDeadline = useCallback((_phaseId?: string) => {
+    autoSwitchRef.current = initialAutoSwitchCursor();
+  }, []);
 
-  const resetAutoSwitchDeadline = useCallback((phaseId?: string) => {
-    if (!autoSwitchEnabled) return;
-    const cyclePhase = phaseId || autoSwitchCyclePhaseRef.current;
-    if (!cyclePhase) return;
-    const intervalMs = Math.max(0, getPhaseAutoSwitchMs(cyclePhase));
-    autoSwitchCyclePhaseRef.current = cyclePhase;
-    autoSwitchCountdownStartedRef.current = !autoSwitchSensorMode;
-    autoSwitchNextAtRef.current = performance.now() + intervalMs;
-    setAutoSwitchRemainingMs(intervalMs);
-  }, [autoSwitchEnabled, autoSwitchSensorMode, getPhaseAutoSwitchMs]);
+  const changeMode = useCallback((gameMode: GameMode) => {
+    if (gameRef.current.gameMode === gameMode) return;
+    const next = createInitialGame(level, gameMode);
+    statsProgressRef.current = { cars: 0, completedWaitMs: 0 };
+    honkScheduleRef.current.clear();
+    autoSwitchRef.current = initialAutoSwitchCursor();
+    updateGame(next);
+  }, [level, updateGame]);
 
   const changeLevel = useCallback((nextLevelId: string) => {
     const nextLevel = getLevelById(nextLevelId);
+    if (gameRef.current.levelId === nextLevel.id) return;
     setLevelId(nextLevel.id);
     const next = {
-      ...createInitialGame(nextLevel),
+      ...createInitialGame(nextLevel, gameRef.current.gameMode),
       running: true,
       paused: false,
       over: false,
@@ -580,16 +545,13 @@ const App: React.FC = () => {
     };
     statsProgressRef.current = { cars: next.cars, completedWaitMs: next.completedWaitMs };
     honkScheduleRef.current.clear();
-    autoSwitchCyclePhaseRef.current = null;
-    autoSwitchNextAtRef.current = null;
-    autoSwitchCountdownStartedRef.current = false;
-    setGame(next);
+    autoSwitchRef.current = initialAutoSwitchCursor();
+    updateGame(next);
   }, []);
 
   const setPhase = useCallback((phase: Phase, manualTrigger = true) => {
-    setGame((prev) => {
+    updateGame((prev) => {
       if (phase === 'allRed') return setAllRed(prev, level);
-      if (prev.controlMode === 'manual') return applyManualScene(prev, [phase], level);
       return requestPhase(prev, phase, level);
     });
     if (manualTrigger && phase !== 'allRed') resetAutoSwitchDeadline(phase);
@@ -605,14 +567,19 @@ const App: React.FC = () => {
 
     if (button.action.type === 'phase') setPhase(button.action.phaseId, true);
     if (button.action.type === 'scene') {
-      setGame((prev) => applyManualScene(prev, button.action.phaseIds, level));
+      const phaseIds = button.action.phaseIds;
+      updateGame((prev) => applyManualScene(prev, phaseIds, level));
       if (button.action.phaseIds.length > 0) resetAutoSwitchDeadline(button.action.phaseIds[0]);
     }
-    if (button.action.type === 'allRed') setPhase('allRed', true);
-  }, [applyManualScene, level, resetAutoSwitchDeadline, setPhase]);
+    if (button.action.type === 'allRed') {
+      updateAutoSwitch(false);
+      setPhase('allRed', true);
+    }
+  }, [applyManualScene, level, resetAutoSwitchDeadline, setPhase, updateAutoSwitch]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || isInteractiveTarget(event.target)) return;
       const control = level.controlButtons.find((item) => item.controlKey === event.key);
       if (!control) return;
       event.preventDefault();
@@ -640,19 +607,13 @@ const App: React.FC = () => {
   }, [game.over, game.paused, game.running, reset, start]);
 
   useEffect(() => {
-    gameRef.current = game;
-  }, [game]);
-
-  useEffect(() => {
     if (!game.running || game.paused || game.over) return;
 
     const timer = window.setInterval(() => {
-      let events: GameEvent[] = [];
-      setGame((prev) => {
-        const result = tickGame(prev, level);
-        events = result.events;
-        return result.state;
-      });
+      if (document.hidden) return;
+      const result = tickGame(gameRef.current, level);
+      updateGame(result.state);
+      const events = result.events;
       events.forEach((event) => {
         if (event === 'success') audioService.playSuccess();
         if (event === 'warning') audioService.playWarning();
@@ -675,7 +636,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const timer = window.setInterval(() => {
       const currentGame = gameRef.current;
-      if (!currentGame.running || currentGame.paused || currentGame.over) return;
+      if (!currentGame.running || currentGame.paused || currentGame.over || document.hidden) return;
 
       const now = performance.now();
       const schedule = honkScheduleRef.current;
@@ -717,25 +678,6 @@ const App: React.FC = () => {
   }, [level, stopProgress]);
 
   useEffect(() => {
-    let frameCount = 0;
-    let lastSecond = performance.now();
-    let rafId = 0;
-
-    const loop = (now: number) => {
-      frameCount += 1;
-      if (now - lastSecond >= 1000) {
-        setFps(Math.round((frameCount * 1000) / (now - lastSecond)));
-        frameCount = 0;
-        lastSecond = now;
-      }
-      rafId = window.requestAnimationFrame(loop);
-    };
-
-    rafId = window.requestAnimationFrame(loop);
-    return () => window.cancelAnimationFrame(rafId);
-  }, []);
-
-  useEffect(() => {
     const timer = window.setInterval(() => setClockMs(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -763,96 +705,27 @@ const App: React.FC = () => {
   }, [game.cars, game.completedWaitMs, level.scoring.targetWaitMs]);
 
   useEffect(() => {
-    if (!autoSwitchEnabled || level.phases.length === 0) {
-      autoSwitchNextAtRef.current = null;
-      autoSwitchCyclePhaseRef.current = null;
-      autoSwitchCountdownStartedRef.current = false;
-      setAutoSwitchRemainingMs(0);
-      return;
-    }
-
     const timer = window.setInterval(() => {
-      const now = performance.now();
-      const current = gameRef.current;
-      const inTransition =
-        current.transitionKind !== 'none' ||
-        current.switchMs > 0 ||
-        Boolean(current.yellowPhase) ||
-        Boolean(current.redYellowPhase);
-      const stableGreenPhase =
-        !inTransition && current.phase !== 'allRed'
-          ? current.phase
-          : null;
-      if (!stableGreenPhase) {
-        const canStartFromAllRed =
-          !inTransition &&
-          current.phase === 'allRed' &&
-          current.targetPhase === 'allRed';
-        if (!canStartFromAllRed) return;
-        const firstPhaseId = getFirstAutoSwitchPhase();
-        if (!firstPhaseId) {
-          autoSwitchNextAtRef.current = null;
-          setAutoSwitchRemainingMs(0);
-          return;
-        }
-        setPhase(firstPhaseId, false);
-        autoSwitchCyclePhaseRef.current = firstPhaseId;
-        autoSwitchNextAtRef.current = null;
-        autoSwitchCountdownStartedRef.current = false;
-        setAutoSwitchRemainingMs(0);
-        return;
-      }
-
-      if (autoSwitchCyclePhaseRef.current !== stableGreenPhase) {
-        autoSwitchCyclePhaseRef.current = stableGreenPhase;
-        autoSwitchCountdownStartedRef.current = !autoSwitchSensorMode;
-        const totalMs = Math.max(0, getPhaseAutoSwitchMs(stableGreenPhase));
-        autoSwitchNextAtRef.current = now + totalMs;
-        setAutoSwitchRemainingMs(totalMs);
-      }
-
-      const nextPhaseId = getNextAutoSwitchPhase(stableGreenPhase);
-      if (!nextPhaseId) {
-        setAutoSwitchRemainingMs(0);
-        autoSwitchNextAtRef.current = null;
-        return;
-      }
-      const activePhaseMs = Math.max(0, getPhaseAutoSwitchMs(stableGreenPhase));
-
-      if (autoSwitchSensorMode && !autoSwitchCountdownStartedRef.current) {
-        if (!phaseHasWaitingVehicle(current, nextPhaseId)) {
-          setAutoSwitchRemainingMs(activePhaseMs);
-          autoSwitchNextAtRef.current = now + activePhaseMs;
-          return;
-        }
-        autoSwitchCountdownStartedRef.current = true;
-        autoSwitchNextAtRef.current = now + activePhaseMs;
-      }
-
-      const nextAt = autoSwitchNextAtRef.current;
-      if (!nextAt) return;
-      if (now < nextAt) {
-        setAutoSwitchRemainingMs(nextAt - now);
-        return;
-      }
-      if (inTransition) return;
-
-      const nextIndex = level.phases.findIndex((phase) => phase.id === nextPhaseId);
-      autoSwitchPhaseIndexRef.current = nextIndex;
-      setPhase(nextPhaseId, false);
-      autoSwitchNextAtRef.current = null;
-      autoSwitchCountdownStartedRef.current = false;
-      setAutoSwitchRemainingMs(0);
+      if (!autoSwitchEnabledRef.current) return;
+      const result = advanceAutoSwitch(gameRef.current, level, {
+        enabled: autoSwitchEnabled,
+        sensorMode: autoSwitchSensorMode,
+        secondsByPhase: Object.fromEntries(level.phases.map((phase) => [phase.id, getPhaseAutoSwitchMs(phase.id) / 1000])),
+      }, autoSwitchRef.current);
+      autoSwitchRef.current = result.cursor;
+      setAutoSwitchRemainingMs(result.remainingMs);
+      if (result.requestPhases) updateGame((prev) => applyManualScene(prev, result.requestPhases!, level));
+      if (result.request) setPhase(result.request, false);
     }, 100);
-
     return () => window.clearInterval(timer);
-  }, [autoSwitchEnabled, autoSwitchSensorMode, getFirstAutoSwitchPhase, getNextAutoSwitchPhase, getPhaseAutoSwitchMs, level, phaseHasWaitingVehicle, setPhase]);
+  }, [autoSwitchEnabled, autoSwitchSensorMode, getPhaseAutoSwitchMs, level, setPhase]);
 
   useEffect(() => {
     const persist = () => {
       const payload: PersistedState = {
+        version: 3,
         levelId,
-        game: { ...gameRef.current, running: true, paused: false, over: false },
+        game: gameRef.current,
         cityStats,
         autoSwitchEnabled,
         autoSwitchSeconds,
@@ -868,17 +741,18 @@ const App: React.FC = () => {
 
     const timer = window.setInterval(persist, 2000);
     persist();
-    return () => window.clearInterval(timer);
+    window.addEventListener('pagehide', persist);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('pagehide', persist);
+    };
   }, [autoSwitchEnabled, autoSwitchSeconds, autoSwitchSecondsByPhase, autoSwitchSensorMode, cityStats, levelId]);
 
-  const activeLabel = game.yellowPhase
-    ? `${getPhaseLabel(level, game.yellowPhase)} gelb`
-    : game.redYellowPhase
-      ? `${getPhaseLabel(level, game.redYellowPhase)} Rot-Gelb`
-      : getPhaseLabel(level, game.phase);
+  const activeLabel = game.transitionKind === 'none'
+    ? game.activePhaseIds.map((id) => getPhaseLabel(level, id)).join(' + ') || 'Alle rot'
+    : game.transitionKind === 'yellow' ? 'Gelb' : game.transitionKind === 'allRed' ? 'Raeumzeit' : 'Rot-Gelb';
   const autoSwitchProgressTotalMs = useMemo(() => {
     const phaseId =
-      autoSwitchCyclePhaseRef.current ||
       (game.targetPhase !== 'allRed' ? game.targetPhase : game.phase !== 'allRed' ? game.phase : null);
     if (!phaseId || phaseId === 'allRed') return Math.max(1, autoSwitchSeconds * 1000);
     return Math.max(1, getPhaseAutoSwitchMs(phaseId));
@@ -886,7 +760,7 @@ const App: React.FC = () => {
 
   const signalPosition = (direction: Direction, slot: number, totalSlots: number) => {
     const centeredSlot = slot - (totalSlots - 1) / 2;
-    const slotShift = centeredSlot * 34;
+    const slotShift = centeredSlot * 38;
     switch (direction) {
       case 'north':
         return { x: center - geometry.roadHalf - 50 + slotShift, y: center - geometry.roadHalf - 44 };
@@ -906,23 +780,70 @@ const App: React.FC = () => {
         return uniquePhaseIds.map((phaseId, slot) => {
           const phase = level.phases.find((item) => item.id === phaseId);
           const pos = signalPosition(approach.direction, slot, uniquePhaseIds.length);
+          const isLeftTurn = approach.lanes.some((lane) => (lane.phaseId || approach.phaseId) === phaseId && lane.turns.includes('left'));
           return {
             key: `${approach.direction}-${phaseId}`,
             phaseId,
-            label: `${phase?.label || approach.label} Gruen`,
+            label: phase?.label || approach.label,
             x: pos.x,
             y: pos.y,
+            rotation: uniquePhaseIds.length > 2 && (approach.direction === 'east' || approach.direction === 'west') ? 90 : 0,
             arrow:
-              approach.direction === 'north'
-                ? 'down'
+              uniquePhaseIds.length < 2
+                ? undefined
+                : approach.direction === 'north'
+                ? isLeftTurn ? 'right' : 'down'
                 : approach.direction === 'south'
-                  ? 'up'
-                  : undefined,
+                  ? isLeftTurn ? 'left' : 'up'
+                  : approach.direction === 'east'
+                    ? isLeftTurn ? 'down' : 'left'
+                    : isLeftTurn ? 'up' : 'right',
           };
         });
       }),
     [level, center, geometry.roadHalf],
   );
+
+  const signalGroups = useMemo(() => Object.fromEntries(
+    level.phases.map((phase) => [phase.id, signalGroupsForPhase(level, phase.id)]),
+  ), [level]);
+  const previewOptions = signalPreview ? signalGroups[signalPreview.phaseId] ?? [] : [];
+  const previewGroup = signalPreview ? previewOptions[signalPreview.index] : undefined;
+  const cyclePreview = useCallback((phaseId: string, direction: number) => {
+    const count = signalGroups[phaseId]?.length ?? 0;
+    if (count < 2) return;
+    setSignalPreview((current) => ({
+      phaseId,
+      index: cycleSignalGroup(current?.phaseId === phaseId ? current.index : 0, direction, count),
+    }));
+  }, [signalGroups]);
+
+  useEffect(() => {
+    setSignalPreview(null);
+    const board = boardRef.current;
+    if (!board) return;
+    const handleWheel = (event: WheelEvent) => {
+      const target = event.target instanceof Element ? event.target.closest('[data-phase-id]') : null;
+      const phaseId = target?.getAttribute('data-phase-id');
+      const delta = event.deltaY || event.deltaX;
+      if (!phaseId || !delta || (signalGroups[phaseId]?.length ?? 0) < 2) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cyclePreview(phaseId, delta);
+    };
+    board.addEventListener('wheel', handleWheel, { passive: false });
+    return () => board.removeEventListener('wheel', handleWheel);
+  }, [signalGroups, cyclePreview]);
+
+  const activateSignal = (phaseId: string) => {
+    const group = signalPreview?.phaseId === phaseId ? signalGroups[phaseId]?.[signalPreview.index] : undefined;
+    if (!group || group.phaseIds.length === 1) {
+      setPhase(phaseId);
+      return;
+    }
+    updateGame((prev) => applyManualScene(prev, group.phaseIds, level));
+    resetAutoSwitchDeadline(phaseId);
+  };
 
   const verticalLaneDividers = useMemo(() => {
     const north = level.approaches.find((approach) => approach.direction === 'north')?.lanes || [];
@@ -952,82 +873,14 @@ const App: React.FC = () => {
     return offsets.slice(0, -1).map((offset, index) => (offset + offsets[index + 1]) / 2);
   }, [geometry.laneOffset, level.approaches]);
 
-  const leftTurnGuides = useMemo(() => {
-    const rotationForDirection = (direction: Direction) => {
-      switch (direction) {
-        case 'north':
-          return 0;
-        case 'east':
-          return 90;
-        case 'south':
-          return 180;
-        case 'west':
-          return -90;
-      }
-    };
-    const leftTurnTarget = (direction: Direction): Direction => {
-      switch (direction) {
-        case 'north':
-          return 'west';
-        case 'east':
-          return 'north';
-        case 'south':
-          return 'east';
-        case 'west':
-          return 'south';
-      }
-    };
-    const rotate = (x: number, y: number, degrees: number) => {
-      const radians = (degrees * Math.PI) / 180;
-      const cos = Math.cos(radians);
-      const sin = Math.sin(radians);
-      return {
-        x: x * cos - y * sin,
-        y: x * sin + y * cos,
-      };
-    };
-    const toWorld = (x: number, y: number, direction: Direction) => {
-      const point = rotate(x, y, rotationForDirection(direction));
-      return { x: center + point.x, y: center + point.y };
-    };
-
-    return level.approaches.flatMap((approach) =>
-      approach.lanes
-        .filter((lane) => lane.turns.includes('left'))
-        .map((lane) => {
-          const inboundOffset = lane.offset ?? geometry.laneOffset;
-          const targetDirection = leftTurnTarget(approach.direction);
-          const targetLanes = level.approaches.find((item) => item.direction === targetDirection)?.lanes || [];
-          const targetLaneOffset =
-            (targetLanes.length > 0
-              ? Math.max(...targetLanes.map((targetLane) => targetLane.offset ?? geometry.laneOffset))
-              : geometry.laneOffset);
-          const radius = Math.max(12, inboundOffset + targetLaneOffset);
-          const curveSamples = 10;
-          const tailLen = 46;
-          const exitLen = 34;
-          const points: Array<{ x: number; y: number }> = [];
-
-          points.push(toWorld(-inboundOffset, -inboundOffset - tailLen, approach.direction));
-          points.push(toWorld(-inboundOffset, -inboundOffset, approach.direction));
-
-          for (let index = 0; index <= curveSamples; index += 1) {
-            const t = index / curveSamples;
-            const theta = Math.PI - t * (Math.PI / 2);
-            const x = targetLaneOffset + radius * Math.cos(theta);
-            const y = -inboundOffset + radius * Math.sin(theta);
-            points.push(toWorld(x, y, approach.direction));
-          }
-
-          points.push(toWorld(targetLaneOffset + exitLen, targetLaneOffset, approach.direction));
-          const d = points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
-          return {
-            key: `${approach.direction}-${lane.id}-left-guide`,
-            d,
-          };
-        }),
-    );
-  }, [center, geometry.laneOffset, level.approaches]);
+  const leftTurnGuides = useMemo(() =>
+    level.approaches.flatMap((approach) =>
+      approach.lanes.filter((lane) => lane.turns.includes('left')).map((lane) => ({
+        key: `${approach.direction}-${lane.id}-left-guide`,
+        d: leftTurnGuidePoints(level, approach.direction, lane.id)
+          .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' '),
+      })),
+    ), [level]);
 
   const handleBoardMouseMove = useCallback(
     (event: React.MouseEvent<SVGSVGElement>) => {
@@ -1049,46 +902,12 @@ const App: React.FC = () => {
       };
     }
 
-    if (button.action.type === 'scene') {
-      const requested = new Set(button.action.phaseIds);
-      const requestedLights = button.action.phaseIds.map((phaseId) => game.manualLights[phaseId] || 'red');
-      const allRequestedLive = requestedLights.every((light) => light !== 'red');
-      const anyRequestedTransitioning = button.action.phaseIds.some((phaseId) => {
-        const transition = game.manualTransitions[phaseId];
-        return (game.manualLights[phaseId] || 'red') === 'red' && transition?.target === 'green';
-      });
-      const allOtherRed = level.phases
-        .filter((phase) => !requested.has(phase.id))
-        .every((phase) => (game.manualLights[phase.id] || 'red') === 'red');
-      const active = allRequestedLive && allOtherRed;
-      return {
-        active: active || anyRequestedTransitioning,
-        pulsing: anyRequestedTransitioning,
-        status: anyRequestedTransitioning ? 'Wechselt' : active ? 'Aktiv' : 'Bereit',
-      };
-    }
-
-    if (button.action.type === 'phase') {
-      const phase = button.action.phaseId;
-      const phaseLight = lightForPhase(game, phase);
-      if (game.controlMode === 'manual') {
-        return {
-          active: phaseLight !== 'red',
-          pulsing: false,
-          status: lightLabel(phaseLight),
-        };
-      }
-
-      const pulsing =
-        game.targetPhase === phase &&
-        phaseLight === 'red' &&
-        (game.transitionKind !== 'none' || game.phase !== phase);
-      const active = phaseLight !== 'red' || pulsing;
-      return {
-        active,
-        pulsing,
-        status: pulsing ? 'Wechselt' : active ? 'Aktiv' : 'Bereit',
-      };
+    if (button.action.type === 'scene' || button.action.type === 'phase') {
+      const ids = button.action.type === 'scene' ? button.action.phaseIds : [button.action.phaseId];
+      const target = game.manualSceneRequest ?? game.activePhaseIds;
+      const selected = ids.length === target.length && ids.every((id) => target.includes(id));
+      const pulsing = selected && game.transitionKind !== 'none';
+      return { active: selected, pulsing, status: pulsing ? 'Wechselt' : selected ? 'Aktiv' : 'Bereit' };
     }
 
     return { active: false, pulsing: false, status: undefined };
@@ -1102,11 +921,16 @@ const App: React.FC = () => {
           <div>
             <h1>Traffic Light Crossing</h1>
             <p>{game.message}</p>
-            <small className="debug-hint">{debugStatus}</small>
+            {cursorBoardPos && <small className="debug-hint">{debugStatus}</small>}
           </div>
         </div>
 
         <div className="meters" aria-live="polite">
+          {game.gameMode === 'challenge' && <>
+            <div><span>Zeit</span><strong>{formatTime(game.remainingMs)}</strong></div>
+            <div><span>Leben</span><strong>{game.lives} / {level.traffic.lives}</strong></div>
+            <div><span>Punkte</span><strong>{game.score}</strong></div>
+          </>}
           <div>
             <span>Autos Gesamt</span>
             <strong>{cityStats.allCars}</strong>
@@ -1132,8 +956,8 @@ const App: React.FC = () => {
             <strong>{satisfaction1Min.toFixed(1)}</strong>
           </div>
           <div>
-            <span>FPS</span>
-            <strong>{fps}</strong>
+            <span>Unfaelle</span>
+            <strong>{game.incidents}</strong>
           </div>
         </div>
 
@@ -1193,13 +1017,17 @@ const App: React.FC = () => {
         <div className="board-wrap">
           <svg
             className="board"
+            ref={boardRef}
             viewBox={`0 0 ${geometry.board} ${geometry.board}`}
-            role="img"
+            role="group"
             aria-label="Signalgesteuerte Kreuzung"
             onMouseMove={handleBoardMouseMove}
             onMouseLeave={() => setCursorBoardPos(null)}
           >
             <defs>
+              <clipPath id="intersection-clip">
+                <rect x={center - geometry.roadHalf} y={center - geometry.roadHalf} width={geometry.roadHalf * 2} height={geometry.roadHalf * 2} />
+              </clipPath>
               <pattern id="asphalt" width="24" height="24" patternUnits="userSpaceOnUse">
                 <rect width="24" height="24" fill="#313945" />
                 <path d="M2 8h4M14 17h5M20 5h2" stroke="#46505f" strokeWidth="1.2" opacity="0.45" />
@@ -1239,13 +1067,17 @@ const App: React.FC = () => {
             {horizontalLaneDividers.map((offset) => (
               <React.Fragment key={`h-lane-${offset}`}>
                 <path d={`M0 ${center + offset}H${center - geometry.roadHalf}`} className="lane-divider" />
+                <path d={`M0 ${center - offset}H${center - geometry.roadHalf}`} className="lane-divider" />
                 <path d={`M${center + geometry.roadHalf} ${center - offset}H${geometry.board}`} className="lane-divider" />
+                <path d={`M${center + geometry.roadHalf} ${center + offset}H${geometry.board}`} className="lane-divider" />
               </React.Fragment>
             ))}
 
-            {leftTurnGuides.map((guide) => (
-              <path key={guide.key} d={guide.d} className="turn-guide" />
-            ))}
+            <g clipPath="url(#intersection-clip)">
+              {leftTurnGuides.map((guide) => (
+                <path key={guide.key} d={guide.d} className="turn-guide" />
+              ))}
+            </g>
 
             <line x1={center - geometry.roadHalf} y1={center - geometry.roadHalf - 18} x2={center} y2={center - geometry.roadHalf - 18} className="stop-line" />
             <line x1={center} y1={center + geometry.roadHalf + 18} x2={center + geometry.roadHalf} y2={center + geometry.roadHalf + 18} className="stop-line" />
@@ -1258,9 +1090,17 @@ const App: React.FC = () => {
                 x={signal.x}
                 y={signal.y}
                 light={lightForPhase(game, signal.phaseId)}
-                label={signal.label}
+                label={`${signal.label}: ${lightLabel(lightForPhase(game, signal.phaseId))}`}
                 arrow={signal.arrow}
-                onClick={() => setPhase(signal.phaseId)}
+                rotation={signal.rotation}
+                phaseId={signal.phaseId}
+                groupMember={Boolean(previewGroup?.phaseIds.includes(signal.phaseId))}
+                previewSource={signalPreview?.phaseId === signal.phaseId}
+                groupCount={signalGroups[signal.phaseId]?.length ?? 0}
+                onPreview={() => setSignalPreview((current) => current?.phaseId === signal.phaseId ? current : { phaseId: signal.phaseId, index: 0 })}
+                onPreviewEnd={() => setSignalPreview((current) => current?.phaseId === signal.phaseId ? null : current)}
+                onCycle={(direction) => cyclePreview(signal.phaseId, direction)}
+                onClick={() => activateSignal(signal.phaseId)}
               />
             ))}
 
@@ -1343,15 +1183,24 @@ const App: React.FC = () => {
             })}
           </svg>
 
+          {previewGroup && signalPreview && (
+            <div className="signal-group-info" id="signal-group-info" role="status">
+              <strong>{previewGroup.label}</strong>
+              <span>{previewOptions.length > 1 ? `Gruppe ${signalPreview.index + 1}/${previewOptions.length} · Mausrad oder ←/→ wechseln · Klick schaltet` : 'Klick schaltet diese Gruppe'}</span>
+            </div>
+          )}
+
           {(!game.running || game.paused || game.over) && (
             <div className="overlay">
               <div className="overlay-panel">
                 <span>{game.over ? 'Ende' : game.paused ? 'Pause' : 'Bereit'}</span>
-                <strong>{game.over ? `${game.score} Punkte` : 'Ampeln selbst korrigieren'}</strong>
+                <strong>{game.over ? `${game.score} Punkte` : game.paused ? 'Spiel pausiert' : 'Du steuerst die Kreuzung'}</strong>
                 <p>
                   {game.over
                     ? `Durchgelassen: ${game.cars} Autos. Beste Serie: ${game.bestStreak}.`
-                    : 'Schalte die Phasen passend zum Rueckstau. Bei Rueckstau verlierst du Leben.'}
+                    : game.gameMode === 'challenge'
+                      ? '90 Sekunden, 5 Leben. Unfaelle und Wartezeiten ab 30 Sekunden kosten Leben. Pfeiltasten oder Ampeln steuern den Verkehr.'
+                      : 'Endlose Simulation: Schalte per Ampel, Konsole oder Pfeiltasten. Deine Stadtstatistik bleibt beim Neustart erhalten.'}
                 </p>
                 <button type="button" onClick={game.over ? reset : start}>
                   <PlayIcon size={20} />
@@ -1363,10 +1212,25 @@ const App: React.FC = () => {
         </div>
 
         <aside className="control-deck" aria-label="Ampelsteuerung">
+          <div className="mode-buttons" role="group" aria-label="Spielmodus">
+            <button type="button" aria-pressed={game.gameMode === 'simulation'} onClick={() => changeMode('simulation')}>Endlos</button>
+            <button type="button" aria-pressed={game.gameMode === 'challenge'} onClick={() => changeMode('challenge')}>90-Sek.-Runde</button>
+          </div>
           <div className="phase-readout">
             <span>{level.name} · Ampelsteuerung</span>
             <strong>{activeLabel}</strong>
           </div>
+
+          <button
+            type="button"
+            className={`pilot-quick${autoSwitchEnabled ? ' active' : ''}`}
+            aria-pressed={autoSwitchEnabled}
+            disabled={!autoSwitchUnlocked && !autoSwitchEnabled}
+            onClick={() => updateAutoSwitch(!autoSwitchEnabled)}
+          >
+            <span>Taktpilot</span>
+            <strong>{autoSwitchEnabled ? 'EIN · Ausschalten' : autoSwitchUnlocked ? 'AUS · Einschalten' : `${cityStats.allCars}/100 Autos`}</strong>
+          </button>
 
           {LEVELS.length > 1 && (
             <div className="level-buttons" aria-label="Levelauswahl">
@@ -1390,7 +1254,18 @@ const App: React.FC = () => {
             <span className="console-screw screw-br" aria-hidden="true" />
             <div className="console-header">
               <span>Signalsteuerung</span>
-              <strong>AUTO</strong>
+              <strong>{autoSwitchEnabled ? 'TAKTPILOT' : 'MANUELL'}</strong>
+            </div>
+            <div className="group-timers" aria-label="Gruppenzeiten">
+              <div className="group-timer">
+                <span>Aktuelle Gruppe</span>
+                <SevenSegmentDisplay milliseconds={game.currentGroupGreenMs} label="Aktuelle Gruppe" />
+              </div>
+              <div className="group-timer">
+                <span>Letzte Gruppe</span>
+                <SevenSegmentDisplay milliseconds={game.lastGroupGreenMs} label="Letzte Gruppe" />
+              </div>
+              <small>Grünzeit in Sekunden · max. 99,9 s</small>
             </div>
             <div className="console-buttons">
               {level.controlButtons.map((button) => {
@@ -1423,7 +1298,7 @@ const App: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={autoSwitchEnabled}
-                  onChange={(event) => setAutoSwitchEnabled(event.target.checked)}
+                  onChange={(event) => updateAutoSwitch(event.target.checked)}
                 />
                 <span className="rotary-knob" aria-hidden="true" />
                 <span>{autoSwitchEnabled ? 'EIN' : 'AUS'}</span>
@@ -1458,6 +1333,7 @@ const App: React.FC = () => {
                   <input
                     type="text"
                     inputMode="decimal"
+                    aria-label="Taktpilot Intervall in Sekunden"
                     value={autoSwitchSecondsInput}
                     onChange={(event) => {
                       const raw = event.target.value;
@@ -1535,6 +1411,7 @@ const App: React.FC = () => {
                           <input
                             type="text"
                             inputMode="decimal"
+                            aria-label={`${phase.label} Intervall in Sekunden`}
                             value={phaseSecondsInputByPhase[phase.id] ?? (autoSwitchSecondsByPhase[phase.id] ?? autoSwitchSeconds).toFixed(1)}
                             onChange={(event) => {
                               const raw = event.target.value;

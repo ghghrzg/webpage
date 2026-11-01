@@ -1,4 +1,13 @@
-import { LevelConfig } from './types';
+import { Direction, LevelConfig } from './types';
+
+const wideApproaches: Array<{ direction: Direction; label: string }> = [
+  { direction: 'north', label: 'Nord' },
+  { direction: 'south', label: 'Süd' },
+  { direction: 'east', label: 'Ost' },
+  { direction: 'west', label: 'West' },
+];
+const straightPhases = (direction: Direction) => [`${direction}Outer`, `${direction}Inner`];
+const leftPhase = (direction: Direction) => `${direction}Left`;
 
 export const LEVELS: LevelConfig[] = [
   {
@@ -74,20 +83,6 @@ export const LEVELS: LevelConfig[] = [
         controlKey: 'ArrowLeft',
       },
       {
-        id: 'north-south-all-green',
-        label: 'Nord / Sud Komplett',
-        color: 'blue',
-        mode: 'latched',
-        action: { type: 'scene', phaseIds: ['northSouthThrough', 'northSouthLeft'] },
-      },
-      {
-        id: 'all-open-green',
-        label: 'Alle Gruppen',
-        color: 'amber',
-        mode: 'latched',
-        action: { type: 'scene', phaseIds: ['northSouthThrough', 'northSouthLeft', 'eastWest'] },
-      },
-      {
         id: 'all-red-stop',
         label: 'Alle rot',
         color: 'red',
@@ -147,8 +142,8 @@ export const LEVELS: LevelConfig[] = [
         label: 'Nord',
         phaseId: 'northThrough',
         lanes: [
-          { id: 'through', turns: ['straight'], offset: 80, phaseId: 'northThrough' },
-          { id: 'left', turns: ['left'], offset: 0, phaseId: 'northLeft' },
+          { id: 'through', turns: ['straight'], offset: 90, phaseId: 'northThrough' },
+          { id: 'left', turns: ['left'], offset: 30, phaseId: 'northLeft' },
         ],
       },
       {
@@ -156,8 +151,8 @@ export const LEVELS: LevelConfig[] = [
         label: 'Sud',
         phaseId: 'southThrough',
         lanes: [
-          { id: 'through', turns: ['straight'], offset: 80, phaseId: 'southThrough' },
-          { id: 'left', turns: ['left'], offset: 0, phaseId: 'southLeft' },
+          { id: 'through', turns: ['straight'], offset: 90, phaseId: 'southThrough' },
+          { id: 'left', turns: ['left'], offset: 30, phaseId: 'southLeft' },
         ],
       },
       {
@@ -228,10 +223,88 @@ export const LEVELS: LevelConfig[] = [
       },
     ],
   },
+  {
+    id: 'three-lane-crossing',
+    name: 'Große Kreuzung',
+    description: 'Vier Zufahrten mit je zwei Geradeausspuren und einer Linksabbiegerspur.',
+    geometry: {
+      board: 1320,
+      roadHalf: 180,
+      laneOffset: 90,
+      start: -90,
+      carLength: 56,
+      carWidth: 30,
+      stopLineOffset: 18,
+    },
+    timings: {
+      gameMs: 90_000,
+      updateMs: 1000 / 30,
+      yellowMs: 1800,
+      redYellowMs: 480,
+      allRedMs: 900,
+      brakeLightHoldMs: 260,
+      brakeLightStopHoldMs: 420,
+    },
+    traffic: {
+      lives: 5,
+      maxVehicles: 72,
+      maxQueuePerApproach: 20,
+      spawnInitialMs: 1100,
+      spawnBaseMs: 1750,
+      spawnVarianceMs: 600,
+      spawnPressureBoostMaxMs: 260,
+      spawnPressureScoreFactor: 0.12,
+      safeGap: 70,
+      stopEpsilon: 0.5,
+      sportChance: 0.045,
+      motorcycleChance: 0.05,
+      maxMotorcyclesPerApproach: 2,
+    },
+    scoring: {
+      pointsPerCar: 10,
+      minPointsPerCar: 2,
+      targetWaitMs: 8000,
+      streakBonusEvery: 5,
+      streakBonusStep: 2,
+      streakBonusMax: 20,
+    },
+    approaches: wideApproaches.map(({ direction, label }) => ({
+      direction,
+      label,
+      phaseId: `${direction}Outer`,
+      lanes: [
+        { id: 'outer', turns: ['straight'], offset: 150, phaseId: `${direction}Outer` },
+        { id: 'inner', turns: ['straight'], offset: 90, phaseId: `${direction}Inner` },
+        { id: 'left', turns: ['left'], offset: 30, phaseId: leftPhase(direction) },
+      ],
+    })),
+    phases: wideApproaches.flatMap(({ direction, label }) => [
+      { id: `${direction}Outer`, label: `${label} Gerade außen`, directions: [direction] },
+      { id: `${direction}Inner`, label: `${label} Gerade innen`, directions: [direction] },
+      { id: leftPhase(direction), label: `${label} Links`, directions: [direction] },
+    ]),
+    autoGroups: [
+      [...straightPhases('north'), ...straightPhases('south')],
+      [leftPhase('north'), leftPhase('south')],
+      [...straightPhases('east'), ...straightPhases('west')],
+      [leftPhase('east'), leftPhase('west')],
+    ],
+    controlButtons: [
+      { id: 'ns-straight', label: 'N/S Gerade', color: 'green', mode: 'latched', action: { type: 'scene', phaseIds: [...straightPhases('north'), ...straightPhases('south')] }, controlKey: 'ArrowUp' },
+      { id: 'ns-left', label: 'N/S Links', color: 'amber', mode: 'latched', action: { type: 'scene', phaseIds: [leftPhase('north'), leftPhase('south')] }, controlKey: 'ArrowRight' },
+      { id: 'ew-straight', label: 'O/W Gerade', color: 'green', mode: 'latched', action: { type: 'scene', phaseIds: [...straightPhases('east'), ...straightPhases('west')] }, controlKey: 'ArrowLeft' },
+      { id: 'ew-left', label: 'O/W Links', color: 'amber', mode: 'latched', action: { type: 'scene', phaseIds: [leftPhase('east'), leftPhase('west')] }, controlKey: 'ArrowDown' },
+      ...wideApproaches.map(({ direction, label }) => ({
+        id: `${direction}-complete`, label: `${label} Komplett`, color: 'blue' as const, mode: 'latched' as const,
+        action: { type: 'scene' as const, phaseIds: [...straightPhases(direction), leftPhase(direction)] },
+      })),
+      { id: 'all-red-stop', label: 'Alle rot', color: 'red', mode: 'momentary', action: { type: 'allRed' } },
+    ],
+  },
 ];
 
-export const DEFAULT_LEVEL_ID = LEVELS[0].id;
+export const DEFAULT_LEVEL_ID = 'dual-lane-left-turn';
 
 export function getLevelById(levelId: string) {
-  return LEVELS.find((level) => level.id === levelId) || LEVELS[0];
+  return LEVELS.find((level) => level.id === levelId) || LEVELS.find((level) => level.id === DEFAULT_LEVEL_ID)!;
 }

@@ -17,7 +17,8 @@ body {
   margin: 0;
   background: #17212b;
   color: #f8fafc;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 button {
@@ -36,7 +37,7 @@ button {
 
 .hud {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
   align-items: center;
   gap: 18px;
   padding: 14px clamp(14px, 3vw, 28px);
@@ -82,12 +83,20 @@ button {
   text-overflow: ellipsis;
 }
 
+.brand > div {
+  min-width: 0;
+}
+
 .debug-hint {
   display: block;
   margin-top: 3px;
   color: #94a3b8;
   font-size: 0.72rem;
   line-height: 1.2;
+  max-width: 42ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .meters {
@@ -322,6 +331,41 @@ button {
   stroke: #f8fafc;
 }
 
+.signal-head.group-preview rect {
+  stroke: #38bdf8;
+  stroke-width: 5;
+  filter: drop-shadow(0 0 9px #38bdf8);
+}
+
+.signal-head.preview-source rect {
+  stroke: #facc15;
+  filter: drop-shadow(0 0 9px #facc15);
+}
+
+.signal-group-info {
+  position: absolute;
+  z-index: 2;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 3px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 8px 12px;
+  border: 1px solid #38bdf8;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.95);
+  color: #f8fafc;
+  font-size: 0.78rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.signal-group-info span {
+  color: #cbd5e1;
+}
+
 .lamp.on {
   filter: drop-shadow(0 0 9px currentColor);
 }
@@ -434,6 +478,43 @@ button {
   padding-right: 4px;
 }
 
+.pilot-quick {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid #64748b;
+  border-radius: 8px;
+  background: #1e293b;
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pilot-quick strong {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
+
+.pilot-quick.active {
+  border-color: #4ade80;
+  background: #14532d;
+}
+
+.pilot-quick.active strong {
+  color: #bbf7d0;
+}
+
+.pilot-quick:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .control-console {
   position: relative;
   display: grid;
@@ -469,6 +550,55 @@ button {
 
 .console-header strong {
   color: #0f172a;
+}
+
+.group-timers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.group-timer {
+  min-width: 0;
+  padding: 7px 6px 6px;
+  border: 1px solid #414c50;
+  border-radius: 4px;
+  background: #16201f;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.55);
+}
+
+.group-timer > span {
+  display: block;
+  min-height: 2.4em;
+  color: #cbd5cf;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.group-timers > small {
+  grid-column: 1 / -1;
+  color: #34413f;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.seven-segment {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.seven-segment-part {
+  fill: #4b2020;
+}
+
+.seven-segment-part.on {
+  fill: #ff554b;
+  filter: drop-shadow(0 0 3px rgba(255, 68, 50, 0.8));
 }
 
 .console-buttons {
@@ -723,6 +853,31 @@ button {
   gap: 8px;
 }
 
+.mode-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mode-buttons button {
+  min-height: 42px;
+  border-radius: 8px;
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-weight: 700;
+}
+
+.mode-buttons button[aria-pressed='true'] {
+  background: #2563eb;
+  border-color: #93c5fd;
+}
+
+button:focus-visible {
+  outline: 2px solid #facc15;
+  outline-offset: 3px;
+}
+
 .level-buttons button,
 .phase-buttons button,
 .overlay-panel button {
@@ -839,7 +994,16 @@ button {
 }
 
 .rotary-switch input {
-  display: none;
+  position: absolute;
+  opacity: 0;
+  width: 44px;
+  height: 44px;
+}
+
+.rotary-switch input:focus-visible + .rotary-knob,
+.sensor-switch input:focus-visible + .sensor-track {
+  outline: 2px solid #facc15;
+  outline-offset: 3px;
 }
 
 .rotary-knob {
@@ -957,7 +1121,10 @@ button {
 }
 
 .sensor-switch input {
-  display: none;
+  position: absolute;
+  opacity: 0;
+  width: 36px;
+  height: 20px;
 }
 
 .sensor-track {
@@ -1177,7 +1344,7 @@ meter::-moz-meter-bar {
   }
 
   .hud {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .meters {
@@ -1197,6 +1364,13 @@ meter::-moz-meter-bar {
 
   .control-deck {
     grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1fr);
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .pilot-quick {
+    grid-column: 1 / -1;
   }
 
   .queue-list,
@@ -1208,6 +1382,15 @@ meter::-moz-meter-bar {
 @media (max-width: 560px) {
   .hud {
     gap: 12px;
+    grid-template-columns: 1fr;
+  }
+
+  .icon-actions {
+    grid-row: 2;
+  }
+
+  .meters {
+    grid-row: 3;
   }
 
   .brand-mark {
