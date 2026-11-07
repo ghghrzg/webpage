@@ -30,8 +30,10 @@
     .item-toggle:active { transform:scale(.985); }
     .item-title { display:block; font-size:18px; line-height:1.13; font-weight:750; letter-spacing:-.035em; }
     .hint { display:block; margin-top:7px; color:var(--muted); font-size:12px; }
-    .ratio { align-self:center; display:grid; grid-template-columns:auto auto auto; align-items:center; gap:7px; padding:7px 8px; border:1px solid rgba(186,243,176,.2); border-radius:12px; color:var(--mint); background:rgba(186,243,176,.06); font:600 11px/1 var(--mono); white-space:nowrap; }
-    .ratio b { color:var(--lime); font-size:14px; }
+    .ratio { align-self:center; display:grid; gap:5px; padding:7px 8px; border:1px solid rgba(186,243,176,.2); border-radius:12px; color:var(--mint); background:rgba(186,243,176,.06); font:600 10px/1 var(--mono); white-space:nowrap; }
+    .ratio-line { display:grid; grid-template-columns:auto auto auto; align-items:center; gap:5px; }
+    .ratio b { color:var(--lime); font-size:12px; }
+    .ratio em { color:var(--mint); font-style:normal; }
     .arrow { color:#79827d; }
     .chevron { display:block; margin-top:9px; color:var(--muted); font-size:12px; transition:transform .2s ease; }
     .item.open .chevron { transform:rotate(180deg); }
@@ -74,18 +76,20 @@
       { name: "Haribo Pixel", detail: "Süßigkeiten · Stückgewicht", from: "Stück", to: "g", factor: 11.5 / 3, note: "3 Stück entsprechen 11,5 g" }
     ];
 
-    const tidy = value => Number.isFinite(value) ? new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(value) : "";
+    const display = value => Number.isFinite(value) ? new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(value) : "";
+    const inputValue = value => Number.isFinite(value) ? String(Number(value.toFixed(1))) : "";
     const parse = value => Number(String(value).replace(",", "."));
     const list = document.querySelector("#conversion-list");
 
     conversions.forEach((item, index) => {
       const card = document.createElement("article");
       card.className = "item";
-      const factor = tidy(item.factor);
+      const factor = display(item.factor);
+      const inverseFactor = display(1 / item.factor);
       card.innerHTML = `
         <button class="item-toggle" type="button" aria-expanded="false" aria-controls="calculator-${index}">
           <span><span class="item-title">${item.name}</span><span class="hint">${item.detail}</span></span>
-          <span><span class="ratio"><span>1 ${item.from}</span><span class="arrow">→</span><b>${factor} ${item.to}</b></span><span class="chevron" aria-hidden="true">⌄</span></span>
+          <span><span class="ratio"><span class="ratio-line"><b>1 ${item.from}</b><span class="arrow">→</span><em>${factor} ${item.to}</em></span><span class="ratio-line"><b>1 ${item.to}</b><span class="arrow">→</span><em>${inverseFactor} ${item.from}</em></span></span><span class="chevron" aria-hidden="true">⌄</span></span>
         </button>
         <div class="calculator" id="calculator-${index}" hidden>
           <div class="calc-inner">
@@ -110,8 +114,8 @@
         toggle.setAttribute("aria-expanded", String(opening));
         if (opening) setTimeout(() => from.focus(), 180);
       });
-      from.addEventListener("input", () => { const value = parse(from.value); to.value = from.value === "" || !Number.isFinite(value) ? "" : tidy(value * item.factor); });
-      to.addEventListener("input", () => { const value = parse(to.value); from.value = to.value === "" || !Number.isFinite(value) ? "" : tidy(value / item.factor); });
+      from.addEventListener("input", () => { const value = parse(from.value); to.value = from.value === "" || !Number.isFinite(value) ? "" : inputValue(value * item.factor); });
+      to.addEventListener("input", () => { const value = parse(to.value); from.value = to.value === "" || !Number.isFinite(value) ? "" : inputValue(value / item.factor); });
       list.append(card);
     });
   </script>
