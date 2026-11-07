@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="de" class="shared-bg-html">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#10151c" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="/lucsch_icon.png" />
+  <link rel="stylesheet" href="/assets/shared-background.css" />
+  <title>Mengenatelier · Umrechnungen</title>
+  <style>
+    :root { --ink:#f7f5ef; --muted:#aaa9a0; --mint:#baf3b0; --lime:#ddff65; --coral:#ff9c7a; --panel:rgba(20,25,29,.9); --line:rgba(255,255,255,.12); --mono:"SFMono-Regular",Consolas,monospace; --ui:Inter,"Avenir Next","Segoe UI",sans-serif; }
+    * { box-sizing:border-box; }
+    html { min-height:100%; color:transparent; }
+    body { margin:0; min-height:100dvh; padding:16px; color:var(--ink); font-family:var(--ui); background:transparent; }
+    button, input { font:inherit; }
+    .app { width:min(680px,100%); margin:0 auto; padding:clamp(8px,2vw,28px) 0 calc(24px + env(safe-area-inset-bottom)); }
+    header { padding:10px 4px 26px; }
+    .eyebrow { display:flex; align-items:center; gap:8px; margin:0 0 12px; color:var(--mint); font:700 11px/1 var(--mono); letter-spacing:.13em; text-transform:uppercase; }
+    .orb { width:9px; height:9px; border-radius:50%; background:var(--lime); box-shadow:0 0 0 5px rgba(221,255,101,.12); }
+    h1 { max-width:11ch; margin:0; font-size:clamp(37px,11vw,58px); line-height:.97; letter-spacing:-.075em; }
+    .intro { max-width:38ch; margin:16px 0 0; color:var(--muted); font-size:15px; line-height:1.45; }
+    .section-label { display:flex; justify-content:space-between; align-items:center; padding:0 4px 10px; color:var(--muted); font:600 11px/1 var(--mono); letter-spacing:.11em; text-transform:uppercase; }
+    .count { color:var(--mint); }
+    .list { display:grid; gap:10px; }
+    .item { overflow:hidden; border:1px solid var(--line); border-radius:22px; background:linear-gradient(135deg,rgba(29,35,39,.96),var(--panel)); box-shadow:0 14px 40px rgba(0,0,0,.22); transition:border-color .18s ease, transform .18s ease; }
+    .item:has(.calculator:not([hidden])) { border-color:rgba(186,243,176,.48); }
+    .item-toggle { width:100%; appearance:none; border:0; padding:18px 16px; display:grid; grid-template-columns:1fr auto; gap:12px; text-align:left; color:inherit; background:transparent; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .item-toggle:active { transform:scale(.985); }
+    .item-title { display:block; font-size:18px; line-height:1.13; font-weight:750; letter-spacing:-.035em; }
+    .hint { display:block; margin-top:7px; color:var(--muted); font-size:12px; }
+    .ratio { align-self:center; display:grid; grid-template-columns:auto auto auto; align-items:center; gap:7px; padding:7px 8px; border:1px solid rgba(186,243,176,.2); border-radius:12px; color:var(--mint); background:rgba(186,243,176,.06); font:600 11px/1 var(--mono); white-space:nowrap; }
+    .ratio b { color:var(--lime); font-size:14px; }
+    .arrow { color:#79827d; }
+    .chevron { display:block; margin-top:9px; color:var(--muted); font-size:12px; transition:transform .2s ease; }
+    .item.open .chevron { transform:rotate(180deg); }
+    .calculator { padding:0 16px 16px; animation:reveal .2s ease-out; }
+    @keyframes reveal { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
+    .calc-inner { border-top:1px solid var(--line); padding-top:15px; }
+    .switch-note { margin:0 0 12px; color:var(--muted); font-size:12px; }
+    .fields { display:grid; grid-template-columns:minmax(0,1fr) 34px minmax(0,1fr); gap:7px; align-items:center; }
+    .swap { color:var(--coral); text-align:center; font-size:19px; }
+    .field { min-width:0; border:1px solid rgba(255,255,255,.14); border-radius:15px; overflow:hidden; background:rgba(0,0,0,.16); transition:border-color .15s; }
+    .field:focus-within { border-color:var(--lime); }
+    .field label { display:block; padding:9px 10px 0; color:var(--muted); font:600 10px/1 var(--mono); text-transform:uppercase; letter-spacing:.09em; }
+    .field input { width:100%; min-width:0; border:0; outline:0; padding:5px 10px 10px; color:var(--ink); background:transparent; font-size:24px; font-weight:700; letter-spacing:-.04em; }
+    .field input::-webkit-outer-spin-button, .field input::-webkit-inner-spin-button { margin:0; -webkit-appearance:none; }
+    .field input[type=number] { -moz-appearance:textfield; }
+    .formula { margin:13px 2px 0; color:#858b88; font:11px/1.4 var(--mono); }
+    .footer { margin:28px 4px 0; color:#777b78; font-size:12px; line-height:1.5; }
+    @media (min-width:560px) { body { padding:28px; } .item-toggle { padding:20px; } .calculator { padding:0 20px 20px; } }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <p class="eyebrow"><span class="orb"></span> Kleine Küchenlogik</p>
+      <h1>Mengen&shy;atelier</h1>
+      <p class="intro">Deine Umrechnungen, ohne Tabellenchaos. Tippe einen Eintrag an und rechne in beide Richtungen.</p>
+    </header>
+
+    <section aria-labelledby="list-title">
+      <div class="section-label"><span id="list-title">Deine Umrechnungen</span><span class="count">03 Einträge</span></div>
+      <div class="list" id="conversion-list"></div>
+    </section>
+    <p class="footer">Die Faktoren sind als praktische Küchenwerte hinterlegt. Bei Markenprodukten können Angaben auf der Packung leicht abweichen.</p>
+  </main>
+  <script>
+    const conversions = [
+      { name: "Ben & Jerry’s Cookie Dough", detail: "Eiscreme · Bechermaß", from: "ml", to: "g", factor: 405 / 465, note: "465 ml entsprechen ca. 405 g" },
+      { name: "Edamame Spaghetti", detail: "Teigwaren · Gargewicht", from: "g roh", to: "g gekocht", factor: 600 / 250, note: "250 g roh ergeben ca. 600 g gekocht" },
+      { name: "Haribo Pixel", detail: "Süßigkeiten · Stückgewicht", from: "Stück", to: "g", factor: 11.5 / 3, note: "3 Stück entsprechen 11,5 g" }
+    ];
+
+    const tidy = value => Number.isFinite(value) ? new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(value) : "";
+    const parse = value => Number(String(value).replace(",", "."));
+    const list = document.querySelector("#conversion-list");
+
+    conversions.forEach((item, index) => {
+      const card = document.createElement("article");
+      card.className = "item";
+      const factor = tidy(item.factor);
+      card.innerHTML = `
+        <button class="item-toggle" type="button" aria-expanded="false" aria-controls="calculator-${index}">
+          <span><span class="item-title">${item.name}</span><span class="hint">${item.detail}</span></span>
+          <span><span class="ratio"><span>1 ${item.from}</span><span class="arrow">→</span><b>${factor} ${item.to}</b></span><span class="chevron" aria-hidden="true">⌄</span></span>
+        </button>
+        <div class="calculator" id="calculator-${index}" hidden>
+          <div class="calc-inner">
+            <p class="switch-note">In beide Richtungen rechenbar</p>
+            <div class="fields">
+              <div class="field"><label for="from-${index}">${item.from}</label><input id="from-${index}" class="from" type="number" inputmode="decimal" pattern="[0-9]*" min="0" step="any" placeholder="0" aria-label="Menge in ${item.from}"></div>
+              <div class="swap" aria-hidden="true">↔</div>
+              <div class="field"><label for="to-${index}">${item.to}</label><input id="to-${index}" class="to" type="number" inputmode="decimal" pattern="[0-9]*" min="0" step="any" placeholder="0" aria-label="Menge in ${item.to}"></div>
+            </div>
+            <p class="formula">${item.note} · Faktor: × ${factor}</p>
+          </div>
+        </div>`;
+      const toggle = card.querySelector(".item-toggle");
+      const calculator = card.querySelector(".calculator");
+      const from = card.querySelector(".from");
+      const to = card.querySelector(".to");
+      toggle.addEventListener("click", () => {
+        const opening = calculator.hidden;
+        document.querySelectorAll(".item").forEach(other => { other.classList.remove("open"); other.querySelector(".calculator").hidden = true; other.querySelector(".item-toggle").setAttribute("aria-expanded", "false"); });
+        calculator.hidden = !opening;
+        card.classList.toggle("open", opening);
+        toggle.setAttribute("aria-expanded", String(opening));
+        if (opening) setTimeout(() => from.focus(), 180);
+      });
+      from.addEventListener("input", () => { const value = parse(from.value); to.value = from.value === "" || !Number.isFinite(value) ? "" : tidy(value * item.factor); });
+      to.addEventListener("input", () => { const value = parse(to.value); from.value = to.value === "" || !Number.isFinite(value) ? "" : tidy(value / item.factor); });
+      list.append(card);
+    });
+  </script>
+</body>
+</html>
