@@ -62,7 +62,7 @@
     </header>
 
     <section aria-labelledby="list-title">
-      <div class="section-label"><span id="list-title">Deine Umrechnungen</span><span class="count">03 Einträge</span></div>
+      <div class="section-label"><span id="list-title">Deine Umrechnungen</span><span class="count">04 Einträge</span></div>
       <div class="list" id="conversion-list"></div>
     </section>
     <p class="footer">Die Faktoren sind als praktische Küchenwerte hinterlegt. Bei Markenprodukten können Angaben auf der Packung leicht abweichen.</p>
@@ -71,11 +71,12 @@
     const conversions = [
       { name: "Ben & Jerry’s Cookie Dough", detail: "Eiscreme · Bechermaß", from: "ml", to: "g", factor: 405 / 465, note: "465 ml entsprechen ca. 405 g" },
       { name: "Edamame Spaghetti", detail: "Teigwaren · Gargewicht", from: "g roh", to: "g gekocht", factor: 600 / 250, note: "250 g roh ergeben ca. 600 g gekocht" },
-      { name: "Haribo Pixel", detail: "Süßigkeiten · Stückgewicht", from: "Stück", to: "g", factor: 11.5 / 3, note: "3 Stück entsprechen 11,5 g" }
+      { name: "Haribo Pixel", detail: "Süßigkeiten · Stückgewicht", from: "Stück", to: "g", factor: 11.5 / 3, note: "3 Stück entsprechen 11,5 g" },
+      { name: "Weintraubensaft hell", detail: "Saft · Dichte bei 20 °C", from: "ml", to: "g", factor: 1.068, note: "1 ml entspricht ca. 1,068 g (weißer Traubensaft, 16,6 °Brix)" }
     ];
 
-    const display = value => Number.isFinite(value) ? new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(value) : "";
-    const inputValue = value => Number.isFinite(value) ? String(Number(value.toFixed(1))) : "";
+    const display = value => Number.isFinite(value) ? new Intl.NumberFormat("de-DE", { maximumFractionDigits: 3 }).format(value) : "";
+    const inputValue = value => Number.isFinite(value) ? String(Number(value.toFixed(2))) : "";
     const parseDecimal = raw => {
       const normalized = String(raw).trim().replace(",", ".");
       if (normalized === "" || normalized === "." || !/^\d*(?:\.\d*)?$/.test(normalized)) return null;
