@@ -121,6 +121,14 @@
         const value = parseDecimal(source.value);
         target.value = value === null ? "" : inputValue(value * multiplier);
       };
+      const selectExistingValue = event => {
+        const input = event.currentTarget;
+        if (input.value !== "") requestAnimationFrame(() => input.select());
+      };
+      from.addEventListener("focus", selectExistingValue);
+      to.addEventListener("focus", selectExistingValue);
+      from.addEventListener("click", selectExistingValue);
+      to.addEventListener("click", selectExistingValue);
       from.addEventListener("input", () => update(from, to, item.factor));
       to.addEventListener("input", () => update(to, from, 1 / item.factor));
       list.append(card);
