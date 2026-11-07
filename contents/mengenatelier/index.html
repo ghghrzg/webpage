@@ -47,8 +47,6 @@
     .field:focus-within { border-color:var(--lime); }
     .field label { display:block; padding:9px 10px 0; color:var(--muted); font:600 10px/1 var(--mono); text-transform:uppercase; letter-spacing:.09em; }
     .field input { width:100%; min-width:0; border:0; outline:0; padding:5px 10px 10px; color:var(--ink); background:transparent; font-size:24px; font-weight:700; letter-spacing:-.04em; }
-    .field input::-webkit-outer-spin-button, .field input::-webkit-inner-spin-button { margin:0; -webkit-appearance:none; }
-    .field input[type=number] { -moz-appearance:textfield; }
     .formula { margin:13px 2px 0; color:#858b88; font:11px/1.4 var(--mono); }
     .footer { margin:28px 4px 0; color:#777b78; font-size:12px; line-height:1.5; }
     @media (min-width:560px) { body { padding:28px; } .item-toggle { padding:20px; } .calculator { padding:0 20px 20px; } }
@@ -78,7 +76,12 @@
 
     const display = value => Number.isFinite(value) ? new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(value) : "";
     const inputValue = value => Number.isFinite(value) ? String(Number(value.toFixed(1))) : "";
-    const parse = value => Number(String(value).replace(",", "."));
+    const parseDecimal = raw => {
+      const normalized = String(raw).trim().replace(",", ".");
+      if (normalized === "" || normalized === "." || !/^\d*(?:\.\d*)?$/.test(normalized)) return null;
+      const value = Number(normalized);
+      return Number.isFinite(value) ? value : null;
+    };
     const list = document.querySelector("#conversion-list");
 
     conversions.forEach((item, index) => {
@@ -95,9 +98,9 @@
           <div class="calc-inner">
             <p class="switch-note">In beide Richtungen rechenbar</p>
             <div class="fields">
-              <div class="field"><label for="from-${index}">${item.from}</label><input id="from-${index}" class="from" type="number" inputmode="decimal" pattern="[0-9]*" min="0" step="any" placeholder="0" aria-label="Menge in ${item.from}"></div>
+              <div class="field"><label for="from-${index}">${item.from}</label><input id="from-${index}" class="from" type="text" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" placeholder="0" aria-label="Menge in ${item.from}"></div>
               <div class="swap" aria-hidden="true">↔</div>
-              <div class="field"><label for="to-${index}">${item.to}</label><input id="to-${index}" class="to" type="number" inputmode="decimal" pattern="[0-9]*" min="0" step="any" placeholder="0" aria-label="Menge in ${item.to}"></div>
+              <div class="field"><label for="to-${index}">${item.to}</label><input id="to-${index}" class="to" type="text" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" placeholder="0" aria-label="Menge in ${item.to}"></div>
             </div>
             <p class="formula">${item.note} · Faktor: × ${factor}</p>
           </div>
@@ -114,8 +117,12 @@
         toggle.setAttribute("aria-expanded", String(opening));
         if (opening) setTimeout(() => from.focus(), 180);
       });
-      from.addEventListener("input", () => { const value = parse(from.value); to.value = from.value === "" || !Number.isFinite(value) ? "" : inputValue(value * item.factor); });
-      to.addEventListener("input", () => { const value = parse(to.value); from.value = to.value === "" || !Number.isFinite(value) ? "" : inputValue(value / item.factor); });
+      const update = (source, target, multiplier) => {
+        const value = parseDecimal(source.value);
+        target.value = value === null ? "" : inputValue(value * multiplier);
+      };
+      from.addEventListener("input", () => update(from, to, item.factor));
+      to.addEventListener("input", () => update(to, from, 1 / item.factor));
       list.append(card);
     });
   </script>
